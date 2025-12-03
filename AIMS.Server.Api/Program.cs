@@ -91,6 +91,18 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(sp =>
 // Infrastructure Services (通过扩展方法注册基础设施层服务，包含 Aspose License 初始化)
 builder.Services.AddInfrastructureServices();
 
+builder.Services.Configure<PlmOptions>(options =>
+{
+    options.AppKey = builder.Configuration["PLM_APP_KEY"] 
+                     ?? throw new InvalidOperationException("Missing PLM_APP_KEY in .env");
+                     
+    options.AppSecret = builder.Configuration["PLM_APP_SECRET"] 
+                        ?? throw new InvalidOperationException("Missing PLM_APP_SECRET in .env");
+                        
+    // 假设你在 .env 也配了 PLM_BASE_URL，或者在这里硬编码默认值
+    options.BaseUrl = builder.Configuration["PLM_BASE_URL"] ?? "https://api.thirdparty-plm.com"; 
+});
+
 // Domain & Application Services
 builder.Services.AddScoped<IUserRepository, MockUserRepository>(); // ⚠️ TODO: 替换为真实 UserRepository
 builder.Services.AddScoped<IRedisService, RedisService>();
@@ -99,6 +111,7 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IPsdService, PsdService>();
 builder.Services.AddScoped<IWordService, WordService>();
 builder.Services.AddScoped<IWordParser, AsposeWordParser>();
+builder.Services.AddScoped<IPlmApiService, PlmApiService>();
 
 // Controller & Filters & JSON Options
 builder.Services.AddControllers(options =>
@@ -178,17 +191,19 @@ builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo { Title = "AIMS API", Version = "v1" });
     
-    // ✅ JWT 认证配置
+    // ✅ [修复] JWT 认证配置：使用 HTTP Bearer 模式
+    // 这样在 Swagger UI 中只需粘贴 Token，无需手动输入 "Bearer " 前缀
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
-        Description = "JWT Authorization header using the Bearer scheme. \r\n\r\n Enter 'Bearer' [space] and then your token in the text input below.\r\n\r\nExample: \"Bearer 12345abcdef\"",
+        Description = "请输入 JWT Token (无需输入 Bearer 前缀，直接粘贴 Token)",
         Name = "Authorization",
         In = ParameterLocation.Header,
-        Type = SecuritySchemeType.ApiKey,
-        Scheme = "Bearer"
+        Type = SecuritySchemeType.Http, // 改为 Http
+        Scheme = "bearer",              // 必须是 bearer (不区分大小写)
+        BearerFormat = "JWT"
     });
 
-    c.AddSecurityRequirement(new OpenApiSecurityRequirement()
+    c.AddSecurityRequirement(new OpenApiSecurityRequirement
     {
         {
             new OpenApiSecurityScheme
@@ -197,20 +212,20 @@ builder.Services.AddSwaggerGen(c =>
                 {
                     Type = ReferenceType.SecurityScheme,
                     Id = "Bearer"
-                },
-                Scheme = "oauth2",
-                Name = "Bearer",
-                In = ParameterLocation.Header,
-
+                }
             },
             new List<string>()
         }
     });
     
-    // 启用 XML 注释 (如果有生成的 XML 文件)
-    // var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
-    // var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
-    // if (File.Exists(xmlPath)) c.IncludeXmlComments(xmlPath);
+    // ✅ [已启用] XML 文档注释
+    // 确保你的 .csproj 文件中包含了 <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
+    var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+    if (File.Exists(xmlPath)) 
+    {
+        c.IncludeXmlComments(xmlPath);
+    }
 });
 
 var app = builder.Build();
