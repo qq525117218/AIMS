@@ -1,0 +1,52 @@
+
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AIMS.Server.Api", "AIMS.Server.Api\AIMS.Server.Api.csproj", "{36D3EDA3-32FD-4AE6-9875-E08F901048D8}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AIMS.Server.Application", "AIMS.Server.Application\AIMS.Server.Application.csproj", "{93B7C87E-A5D5-421D-A380-A2582D8D01E9}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AIMS.Server.Domain", "AIMS.Server.Domain\AIMS.Server.Domain.csproj", "{AA02A610-07C8-4D7B-8FA9-B2C1249A36F3}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AIMS.Server.Infrastructure", "AIMS.Server.Infrastructure\AIMS.Server.Infrastructure.csproj", "{9F4B48BA-CA9F-4B34-AFE9-01954E4F1E8C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AIMS.Server.Tests", "AIMS.Server.Tests\AIMS.Server.Tests.csproj", "{722DB684-7556-4563-A762-901244255648}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "DevOps", "DevOps", "{B2C4D8E1-93E8-4E29-B9B3-8E7E53D6B7A1}"
+				ProjectSection(SolutionItems) = preProject
+								docker-compose.yml = docker-compose.yml
+								.dockerignore = .dockerignore
+								.env = .env
+				EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Database", "Database", "{7C5A3F9E-4A1B-4E49-9D7D-1E2B8A2C3D4F}"
+				ProjectSection(SolutionItems) = preProject
+								db\mysql\init\001_init.sql = db\mysql\init\001_init.sql
+				EndProjectSection
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{36D3EDA3-32FD-4AE6-9875-E08F901048D8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{36D3EDA3-32FD-4AE6-9875-E08F901048D8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{36D3EDA3-32FD-4AE6-9875-E08F901048D8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{36D3EDA3-32FD-4AE6-9875-E08F901048D8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{93B7C87E-A5D5-421D-A380-A2582D8D01E9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{93B7C87E-A5D5-421D-A380-A2582D8D01E9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{93B7C87E-A5D5-421D-A380-A2582D8D01E9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{93B7C87E-A5D5-421D-A380-A2582D8D01E9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{AA02A610-07C8-4D7B-8FA9-B2C1249A36F3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AA02A610-07C8-4D7B-8FA9-B2C1249A36F3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AA02A610-07C8-4D7B-8FA9-B2C1249A36F3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AA02A610-07C8-4D7B-8FA9-B2C1249A36F3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9F4B48BA-CA9F-4B34-AFE9-01954E4F1E8C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9F4B48BA-CA9F-4B34-AFE9-01954E4F1E8C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9F4B48BA-CA9F-4B34-AFE9-01954E4F1E8C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9F4B48BA-CA9F-4B34-AFE9-01954E4F1E8C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{722DB684-7556-4563-A762-901244255648}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{722DB684-7556-4563-A762-901244255648}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{722DB684-7556-4563-A762-901244255648}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{722DB684-7556-4563-A762-901244255648}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

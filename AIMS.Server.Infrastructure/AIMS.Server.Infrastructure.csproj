@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net8.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Aspose.Drawing" Version="24.9.0" />
+    <PackageReference Include="Aspose.Words" Version="25.7.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.13" />
+    <PackageReference Include="Pomelo.EntityFrameworkCore.MySql" Version="8.0.3" />
+    <PackageReference Include="StackExchange.Redis" Version="2.10.1" />
+  </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\AIMS.Server.Application\AIMS.Server.Application.csproj" />
+      <ProjectReference Include="..\AIMS.Server.Domain\AIMS.Server.Domain.csproj" />
+	  
+    </ItemGroup>
+	
+	<!-- ✅ 新增：将 License 文件设置为嵌入式资源 -->
+	
+
+    <ItemGroup>
+      <Reference Include="Aspose.Drawing">
+        <HintPath>D:\BaiduNetdiskDownload\Aspose.Drawing\Aspose.Drawing for .NET v25.7.0\lib\netstandard2.0\Aspose.Drawing.dll</HintPath>
+      </Reference>
+      <Reference Include="Aspose.PSD">
+        <HintPath>D:\BaiduNetdiskDownload\Aspose.PSD\Aspose.PSD for .NET v25.7.0\lib\net8.0\Aspose.PSD.dll</HintPath>
+      </Reference>
+      <Reference Include="Aspose.Words">
+        <HintPath>C:\Users\zob\Downloads\Aspose.Words for .NET v25.10\Aspose.Words for .NET v25.10.0\lib\net8.0\Aspose.Words.dll</HintPath>
+      </Reference>
+    </ItemGroup>
+
+</Project>
