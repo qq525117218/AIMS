@@ -2,10 +2,6 @@
 
 namespace AIMS.Server.Application.DTOs.Plm;
 
-/// <summary>
-/// PLM 接口通用响应结构
-/// </summary>
-/// <typeparam name="T">具体的 Data 数据类型</typeparam>
 public class PlmResponse<T>
 {
     [JsonProperty("code")]
@@ -20,6 +16,7 @@ public class PlmResponse<T>
     [JsonProperty("request_id")]
     public string? RequestId { get; set; }
 
+    // 这是一个泛型，可以适应 BrandDto, ProductDto 等各种列表或对象
     [JsonProperty("data")]
     public T? Data { get; set; }
 }

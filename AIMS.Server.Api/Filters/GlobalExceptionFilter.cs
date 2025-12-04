@@ -40,11 +40,15 @@ public class GlobalExceptionFilter : IAsyncExceptionFilter
                 break;
         }
 
-        context.Result = new JsonResult(ApiResponse<string>.Fail(statusCode, message))
+        
+        var response = ApiResponse<string>.Fail(statusCode, message);
+        response.RequestId = context.HttpContext.TraceIdentifier; // 获取当前请求的 ID
+
+        context.Result = new JsonResult(response)
         {
             StatusCode = statusCode
         };
-        
+    
         context.ExceptionHandled = true;
         return Task.CompletedTask;
     }

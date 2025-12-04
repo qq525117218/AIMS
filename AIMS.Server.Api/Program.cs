@@ -1,6 +1,7 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Text;
 using System.Text.Encodings.Web;
+using System.Text.Json;
 using System.Text.Unicode;
 using AIMS.Server.Api.Filters;
 using AIMS.Server.Application.Options;
@@ -113,15 +114,27 @@ builder.Services.AddScoped<IWordService, WordService>();
 builder.Services.AddScoped<IWordParser, AsposeWordParser>();
 builder.Services.AddScoped<IPlmApiService, PlmApiService>();
 
+// ✅ 新增：配置路由使用小写 URL
+// 这会将 [controller] 替换后的名称自动转换为小写 (例如 Auth -> auth)
+// 并且 Swagger 文档中的接口路径也会变成小写
+builder.Services.AddRouting(options => 
+{
+    options.LowercaseUrls = true;
+});
 // Controller & Filters & JSON Options
 builder.Services.AddControllers(options =>
 {
+    // 1. 注册异常拦截器 (处理报错情况)
     options.Filters.Add<GlobalExceptionFilter>();
+    
+    // 2. ✅ 新增：注册 RequestId 自动填充拦截器 (处理成功情况)
+    options.Filters.Add<RequestIdResultFilter>();
 })
 .AddJsonOptions(options =>
 {
-    // ✅ 关键配置：解决中文被转义为 \uXXXX 以及 + 被转义为 \u002B 的问题
-    // UnsafeRelaxedJsonEscaping 允许大多数非 ASCII 字符原样输出
+    // ✅ 关键配置：将所有属性名称转换为下划线小写 (Snake Case)
+    // 例如：ProductName -> product_name, RequestId -> request_id
+    options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower;
     options.JsonSerializerOptions.Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping;
 });
 
@@ -191,6 +204,34 @@ builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo { Title = "AIMS API", Version = "v1" });
     
+    // ✅ 2. 新增：定义 PLM 分组
+    c.SwaggerDoc("plm", new OpenApiInfo { Title = "PLM Module API", Version = "v1", Description = "对接第三方 PLM 系统的专用接口" });
+    
+    
+    // =========================================================================
+    // ✅ 新增：配置文档包含规则 (关键修复)
+    // =========================================================================
+    c.DocInclusionPredicate((docName, apiDesc) =>
+    {
+        // 获取当前接口的分组名 (未加特性的接口默认为 null)
+        var actionGroup = apiDesc.GroupName;
+
+        // 规则 1: 如果当前生成的文档是 'plm'
+        // -> 只有当接口明确标记为 "plm" 时才包含
+        if (docName == "plm")
+        {
+            return actionGroup == "plm";
+        }
+
+        // 规则 2: 如果当前生成的文档是 'v1' (主文档)
+        // -> 包含明确标记为 "v1" 的接口，或者 没标记分组的接口 (归为主文档)
+        if (docName == "v1")
+        {
+            return string.IsNullOrEmpty(actionGroup) || actionGroup == "v1";
+        }
+
+        return false;
+    });
     // ✅ [修复] JWT 认证配置：使用 HTTP Bearer 模式
     // 这样在 Swagger UI 中只需粘贴 Token，无需手动输入 "Bearer " 前缀
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
@@ -237,7 +278,14 @@ var app = builder.Build();
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
-    app.UseSwaggerUI();
+    app.UseSwaggerUI(c =>
+    {
+        // 下拉框选项 1：主 API
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "Main API");
+        
+        // 下拉框选项 2：PLM 模块
+        c.SwaggerEndpoint("/swagger/plm/swagger.json", "PLM API");
+    });
 }
 
 // ⚠️ 注意：认证 (Authentication) 必须在 授权 (Authorization) 之前
