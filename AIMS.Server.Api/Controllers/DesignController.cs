@@ -22,39 +22,45 @@ public class DesignController : ControllerBase
     /// 生成 Photoshop (PSD) 模板文件
     /// </summary>
     /// <remarks>
-    /// 生成的文件为 RGB 模式，300 DPI。包含出血线和安全区标记。
+    /// 接受包含规格和内容的复杂对象，生成分图层的 PSD 文件。
     /// </remarks>
     [HttpPost("generate/psd")]
     [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> GeneratePsd([FromBody] PsdRequestDto request)
     {
-        // 1. 基础参数校验 (由 [ApiController] 自动处理，但手动写出逻辑更健壮)
+        // 模型绑定校验 (Dimensions 中的 [Range] 等)
         if (!ModelState.IsValid)
         {
-            return BadRequest(ApiResponse<string>.Fail(400, "参数校验失败"));
+            // 提取第一个错误信息返回
+            var errorMsg = ModelState.Values.SelectMany(v => v.Errors).FirstOrDefault()?.ErrorMessage ?? "参数校验失败";
+            return BadRequest(ApiResponse<string>.Fail(400, errorMsg));
         }
 
         try
         {
-            _logger.LogInformation("开始生成 PSD: L={L}, H={H}, W={W}", request.Length, request.Height, request.Width);
+            var dim = request.Specifications.Dimensions;
+            _logger.LogInformation("开始生成 PSD 项目: {ProjectName}, 尺寸: {L}x{W}x{H}", 
+                request.ProjectName, dim.Length, dim.Width, dim.Height);
 
-            // 2. 调用业务层
+            // 调用业务层
             var fileBytes = await _psdService.CreatePsdFileAsync(request);
                 
-            // 3. 生成文件名
-            var fileName = $"Template_L{request.Length}_H{request.Height}_{DateTime.Now:yyyyMMddHHmm}.psd";
+            // 文件名处理：ProjectName + 时间戳
+            var safeProjectName = string.Join("_", request.ProjectName.Split(Path.GetInvalidFileNameChars()));
+            var fileName = $"{safeProjectName}_{DateTime.Now:yyyyMMddHHmm}.psd";
 
-            // 4. 返回文件流
+            // 返回文件流
             return File(fileBytes, "application/x-photoshop", fileName);
         }
         catch (ArgumentException ex)
         {
+            _logger.LogWarning(ex, "生成 PSD 参数异常");
             return BadRequest(ApiResponse<string>.Fail(400, ex.Message));
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "生成 PSD 失败");
+            _logger.LogError(ex, "生成 PSD 发生未捕获异常");
             return StatusCode(500, ApiResponse<string>.Fail(500, "生成文件时发生内部错误"));
         }
     }

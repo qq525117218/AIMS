@@ -5,16 +5,13 @@ namespace AIMS.Server.Application.DTOs.Psd;
 
 public class PsdRequestDto
 {
-    [Range(0.1, 1000, ErrorMessage = "长度必须大于0")]
-    public double Length { get; set; }
+    [Required]
+    public string ProjectName { get; set; } = string.Empty;
 
-    [Range(0.1, 1000, ErrorMessage = "高度必须大于0")]
-    public double Height { get; set; }
+    public UserContextDto UserContext { get; set; } = new();
 
-    [Range(0.1, 1000, ErrorMessage = "宽度必须大于0")]
-    public double Width { get; set; }
+    [Required]
+    public PackagingSpecsDto Specifications { get; set; } = new();
 
-    public double BleedLeftRight { get; set; }
-    public double BleedTopBottom { get; set; }
-    public double InnerBleed { get; set; }
+    public PackagingAssetsDto Assets { get; set; } = new();
 }
