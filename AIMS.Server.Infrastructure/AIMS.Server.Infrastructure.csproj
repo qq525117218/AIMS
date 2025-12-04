@@ -25,7 +25,11 @@
     </ItemGroup>
 	
 	<!-- ✅ 新增：将 License 文件设置为嵌入式资源 -->
-	
+    <ItemGroup>
+      <EmbeddedResource Include="Licenses\Aspose.Total.NET.lic">
+        <LogicalName>AIMS.Server.Infrastructure.Licenses.Aspose.Total.NET.lic</LogicalName>
+      </EmbeddedResource>
+    </ItemGroup>
 
     <ItemGroup>
       <Reference Include="Aspose.Drawing">

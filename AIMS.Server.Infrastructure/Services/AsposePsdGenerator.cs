@@ -9,6 +9,8 @@ using Aspose.PSD.FileFormats.Psd.Layers.FillSettings;
 using Aspose.PSD.ImageOptions;
 using Aspose.PSD.Sources;
 
+using Aspose.PSD.FileFormats.Psd.Layers.Text;
+
 namespace AIMS.Server.Infrastructure.Services;
 
 public class AsposePsdGenerator : IPsdGenerator
@@ -121,7 +123,7 @@ public class AsposePsdGenerator : IPsdGenerator
             // --- 辅助线组 ---
             AddGuidelines(psdImage, X, Y, Z, A, B, C);
             
-            // TODO: 这里未来会添加 DrawTexts(psdImage, assets) 和 DrawBarcode(psdImage, assets)
+            DrawInfoPanelAssets(psdImage, assets, dim);
 
             // 5. 保存到内存流返回
             using (var ms = new MemoryStream())
@@ -243,9 +245,133 @@ public class AsposePsdGenerator : IPsdGenerator
             Console.WriteLine($"Error creating layer {layerName}: {ex.Message}");
         }
     }
+    
+    
+    /// <summary>
+/// 绘制信息面板的所有文本资产
+/// </summary>
+private void DrawInfoPanelAssets(PsdImage psdImage, PackagingAssets assets, PackagingDimensions dim)
+{
+    var info = assets.Texts.InfoPanel;
+    if (info == null) return;
+
+    // --- 布局参数计算 (模拟定位在背板 Back Panel) ---
+    // 你需要根据实际刀版逻辑获取 Back 面板的坐标
+    // 假设：X, Y, Z, A, B, C 已经在上层计算好，或者通过参数传进来
+    // 这里为了演示，我们重新简单计算一下 Back 面板的起始点 (参考 GenerateInternal 中的逻辑)
+    
+    var X = CmToPixels(dim.Length);
+    var Y = CmToPixels(dim.Height);
+    var Z = CmToPixels(dim.Width);
+    var A = CmToPixels(dim.BleedLeftRight);
+    var B = CmToPixels(dim.BleedTopBottom);
+    var C = CmToPixels(dim.InnerBleed);
+
+    // Back 面板的左上角坐标 (参考 CreateShapeLayer("back", ...))
+    int startX = A + (2 * Z) + X; 
+    int startY = B + Z - (2 * C);
+    int panelWidth = A + X; // 背板宽度
+
+    // 定义文本区域的内边距 (Padding)
+    int padding = 30; 
+    int currentY = startY + padding;
+    int textAreaWidth = panelWidth - (2 * padding);
+    int lineHeight = 50; // 这里的行高是预估的，如果文本很长需要自动换行计算高度
+
+    // 字号 6pt
+    float fontSize = 6f;
+
+    // --- 依次生成图层 ---
+
+    // 1. Ingredients (成分)
+    // 假设文本框高度为 100 像素
+    CreateRichTextLayer(psdImage, "Ingredients", "INGREDIENTS:", info.Ingredients, 
+        new Rectangle(startX + padding, currentY, textAreaWidth, 100), fontSize);
+    currentY += 110; // 移动 Y 轴
+
+    // 2. Directions (使用方法) - 你要求的例子
+    CreateRichTextLayer(psdImage, "Directions", "DIRECTIONS:", info.Directions, 
+        new Rectangle(startX + padding, currentY, textAreaWidth, 80), fontSize);
+    currentY += 90;
+
+    // 3. Warnings (警告)
+    CreateRichTextLayer(psdImage, "Warnings", "WARNINGS:", info.Warnings, 
+        new Rectangle(startX + padding, currentY, textAreaWidth, 80), fontSize);
+    currentY += 90;
+
+    // 4. Manufacturer (制造商)
+    CreateRichTextLayer(psdImage, "Manufacturer", "MANUFACTURER:", info.Manufacturer, 
+        new Rectangle(startX + padding, currentY, textAreaWidth, 50), fontSize);
+    currentY += 60;
+
+    // 5. Address (地址)
+    CreateRichTextLayer(psdImage, "Address", "ADDRESS:", info.Address, 
+        new Rectangle(startX + padding, currentY, textAreaWidth, 50), fontSize);
+    currentY += 60;
+
+    // 6. Origin (原产地)
+    CreateRichTextLayer(psdImage, "Origin", "MADE IN:", info.Origin, 
+        new Rectangle(startX + padding, currentY, textAreaWidth, 50), fontSize);
+}
+    
+    /// <summary>
+    /// 创建富文本图层（支持 标题加粗 + 内容常规 的组合样式）
+    /// </summary>
+    /// <param name="psdImage">PSD 对象</param>
+    /// <param name="layerName">图层名称</param>
+    /// <param name="label">标题（将加粗），如 "Directions:"</param>
+    /// <param name="content">内容（常规），如 "Cleanse and dry..."</param>
+    /// <param name="rect">文本框区域</param>
+    /// <param name="fontSizePt">字号（点）</param>
+    /// <summary>
+    /// 创建富文本图层（支持 标题加粗 + 内容常规 的组合样式）
+    /// </summary>
+    private void CreateRichTextLayer(PsdImage psdImage, string layerName, string label, string content, Rectangle rect, float fontSizePt)
+    {
+        if (string.IsNullOrWhiteSpace(content)) return;
+
+        // 1. 创建文本图层
+        // 初始化时先只放入标题和空格，Aspose 会自动生成第一个 Portion (Items[0])
+        var textLayer = psdImage.AddTextLayer(label + " ", rect);
+        textLayer.DisplayName = layerName;
+
+        // 2. 获取文本数据接口
+        var textData = textLayer.TextData;
+
+        float fontSizePixels = PtToPixels(fontSizePt);
+        // TextData.Items[0] 是默认生成的第一个文本片段
+        var labelPortion = textData.Items[0];
+        labelPortion.Style.FontName = "Arial";
+        labelPortion.Style.FontSize = fontSizePixels;
+        labelPortion.Style.FauxBold = true; // 加粗
+        labelPortion.Style.FillColor = Color.Black;
+        // [修复] 枚举类型是 JustificationMode，属性是 Justification
+        labelPortion.Paragraph.Justification = JustificationMode.Left; 
+
+        // --- 添加第二个片段 (内容: Cleanse and dry...) ---
+        // 使用 ProducePortion 创建新片段
+        var contentPortion = textData.ProducePortion();
+        contentPortion.Text = content;
+        contentPortion.Style.FontName = "Arial";
+        contentPortion.Style.FontSize = fontSizePixels;
+        contentPortion.Style.FauxBold = false; // 不加粗
+        contentPortion.Style.FillColor = Color.Black;
+        contentPortion.Paragraph.Justification = JustificationMode.Left;
+
+        // [修复] 使用 AddPortion 将片段加入文本数据
+        textData.AddPortion(contentPortion);
+
+        // 3. 应用更改
+        textData.UpdateLayerData();
+    }
 
     private int CmToPixels(double cm)
     {
         return (int)Math.Round((cm / 2.54) * DPI);
+    }
+    
+    private float PtToPixels(float pt)
+    {
+        return (pt * DPI) / 72f;
     }
 }
