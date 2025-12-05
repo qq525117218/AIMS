@@ -12,9 +12,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AIMS.Server.Tests", "AIMS.S
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "DevOps", "DevOps", "{B2C4D8E1-93E8-4E29-B9B3-8E7E53D6B7A1}"
 				ProjectSection(SolutionItems) = preProject
-								docker-compose.yml = docker-compose.yml
+					docker-compose-local.yml = docker-compose-local.yml
 								.dockerignore = .dockerignore
 								.env = .env
+					docker-compose-dev.yml = docker-compose-dev.yml
 				EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Database", "Database", "{7C5A3F9E-4A1B-4E49-9D7D-1E2B8A2C3D4F}"

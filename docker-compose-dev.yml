@@ -1,0 +1,87 @@
+services:
+  # ==============================
+  # 1. 前端服务 (Nginx + Vue)
+  # ==============================
+  aims-web:
+    build:
+      context: ./aims_frontend  # 指向前端代码目录
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"  # 浏览器访问入口
+    depends_on:
+      - aims-api
+    networks:
+      - aims-network
+    restart: always
+
+  # ==============================
+  # 2. 后端服务 (.NET API)
+  # ==============================
+  aims-api:
+    build:
+      context: ./aims  # 指向后端代码根目录
+      dockerfile: AIMS.Server.Api/Dockerfile
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      # 使用服务名作为 Host
+      - MYSQL_CONNECTION_STRING=Server=mysql;Port=3306;Database=aims_db;Uid=root;Pwd=YourSecurePassword123!;
+      - REDIS_HOST=redis
+      - REDIS_PASSWORD=YourRedisPassword
+      - JWT_SECRET=ThisIsALongSecretForJWTEncryption_ChangeMeInProduction
+      - PLM_APP_KEY=your_key
+      - PLM_APP_SECRET=your_secret
+    depends_on:
+      - mysql
+      - redis
+    networks:
+      - aims-network
+    restart: always
+
+  # ==============================
+  # 3. 基础设施 (DB, Redis, MQ)
+  # ==============================
+  mysql:
+    image: mysql:8.4
+    environment:
+      - MYSQL_ROOT_PASSWORD=YourSecurePassword123!
+      - MYSQL_DATABASE=aims_db
+    volumes:
+      - mysql_data:/var/lib/mysql
+      # 挂载你的初始化脚本
+      - ./aims/db/mysql/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - aims-network
+    command: --default-authentication-plugin=mysql_native_password
+
+  redis:
+    image: redis:7.2
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "YourRedisPassword"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - aims-network
+
+  # 如果你需要 RabbitMQ，保留它；不需要可以注释掉以节省资源
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    ports:
+      - "15672:15672" # 管理界面
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - aims-network
+
+# ==============================
+# 网络与存储卷
+# ==============================
+networks:
+  aims-network:
+    driver: bridge
+
+volumes:
+  mysql_data:
+  redis_data:
+  rabbitmq_data:
