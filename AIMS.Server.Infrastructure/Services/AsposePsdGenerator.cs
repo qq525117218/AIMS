@@ -7,9 +7,9 @@ using Aspose.PSD.FileFormats.Psd.Layers;
 using Aspose.PSD.FileFormats.Psd.Layers.FillLayers;
 using Aspose.PSD.FileFormats.Psd.Layers.FillSettings;
 using Aspose.PSD.ImageOptions;
-using Aspose.PSD.Sources;
 
-using Aspose.PSD.FileFormats.Psd.Layers.Text;
+
+using Aspose.PSD.ProgressManagement;
 
 namespace AIMS.Server.Infrastructure.Services;
 
@@ -17,135 +17,173 @@ public class AsposePsdGenerator : IPsdGenerator
 {
     private const float DPI = 300f; // 核心要求：300 DPI
 
-    // ✅ 修改签名：接收 assets，但目前 logic 不处理它
-    public async Task<byte[]> GeneratePsdAsync(PackagingDimensions dim, PackagingAssets assets)
+    /// <summary>
+    /// 生成 PSD 文件 (支持进度回调)
+    /// </summary>
+    /// <param name="dim">物理规格</param>
+    /// <param name="assets">视觉素材</param>
+    /// <param name="onProgress">进度回调 (0-100, 状态描述)</param>
+    /// <returns>PSD 文件字节流</returns>
+    public async Task<byte[]> GeneratePsdAsync(PackagingDimensions dim, PackagingAssets assets, Action<int, string>? onProgress = null)
     {
-        // 即使 assets 传进来，目前我们也只用 dim 生成刀版和辅助线
-        return await Task.Run(() => GenerateInternal(dim, assets));
+        // 将生成任务放入后台线程，避免阻塞
+        return await Task.Run(() => GenerateInternal(dim, assets, onProgress));
     }
 
     /// <summary>
     /// 核心生成逻辑
     /// </summary>
-    private byte[] GenerateInternal(PackagingDimensions dim, PackagingAssets assets)
+    private byte[] GenerateInternal(PackagingDimensions dim, PackagingAssets assets, Action<int, string>? onProgress)
     {
-        // 1. 基础像素转换 (CM -> Pixels)
-        var X = CmToPixels(dim.Length); // 长
-        var Y = CmToPixels(dim.Height); // 高
-        var Z = CmToPixels(dim.Width);  // 宽
-
-        var A = CmToPixels(dim.BleedLeftRight); // 左右出血
-        var B = CmToPixels(dim.BleedTopBottom); // 上下出血
-        var C = CmToPixels(dim.InnerBleed);     // 内出血
-
-        // 2. 计算画布总尺寸
-        var totalWidth = (2 * X) + (2 * Z) + (2 * A);
-        
-        // 高度计算 (保持原有逻辑)
-        var calculatedHeight = Y + (2 * Z) + (2 * B) - (4 * C);
-        var minRequiredHeight = B + (2 * Z) + Y;
-        var totalHeight = Math.Max(calculatedHeight, minRequiredHeight);
-
-        // 3. 配置 PSD 选项
-        var psdOptions = new PsdOptions
+        try
         {
-            Source = new StreamSource(new MemoryStream()),
-            ColorMode = ColorModes.Rgb,
-            ChannelsCount = 3,
-            ChannelBitsCount = 8,
-            ResolutionSettings = new ResolutionSetting(DPI, DPI)
-        };
+            // --- 阶段 1: 初始化 (0% - 5%) ---
+            onProgress?.Invoke(1, "正在初始化画布参数...");
 
-        // 4. 创建并绘制 PSD
-        using (var psdImage = new PsdImage(totalWidth, totalHeight))
-        {
-            psdImage.SetResolution(DPI, DPI);
+            // 1. 基础像素转换 (CM -> Pixels)
+            var X = CmToPixels(dim.Length); // 长
+            var Y = CmToPixels(dim.Height); // 高
+            var Z = CmToPixels(dim.Width);  // 宽
 
-            // --- 绘制各个面板 (标准图层) ---
-            // 逻辑完全保留，不引用 assets
+            var A = CmToPixels(dim.BleedLeftRight); // 左右出血
+            var B = CmToPixels(dim.BleedTopBottom); // 上下出血
+            var C = CmToPixels(dim.InnerBleed);     // 内出血
 
-            // BG (背景/整体轮廓)
-            CreateShapeLayer(psdImage, "BG",
-                width: (2 * X) + (2 * Z) + (2 * A),
-                height: Y + (4 * C),
-                x: 0,
-                y: B + Z - (2 * C),
-                Color.White);
+            // 2. 计算画布总尺寸
+            var totalWidth = (2 * X) + (2 * Z) + (2 * A);
 
-            // Left (左侧面)
-            CreateShapeLayer(psdImage, "left",
-                width: A + X,
-                height: Y + (4 * C),
-                x: 0,
-                y: B + Z - (2 * C),
-                Color.White);
+            // 高度计算
+            var calculatedHeight = Y + (2 * Z) + (2 * B) - (4 * C);
+            var minRequiredHeight = B + (2 * Z) + Y;
+            var totalHeight = Math.Max(calculatedHeight, minRequiredHeight);
 
-            // Front (正面)
-            CreateShapeLayer(psdImage, "front",
-                width: X,
-                height: Y + (4 * C),
-                x: A + Z,
-                y: B + Z - (2 * C),
-                Color.White);
+            onProgress?.Invoke(5, "画布尺寸计算完成，正在创建图像...");
 
-            // Right (右侧面)
-            CreateShapeLayer(psdImage, "right",
-                width: X,
-                height: Y + (4 * C),
-                x: A + Z + X,
-                y: B + Z - (2 * C),
-                Color.White);
-
-            // Back (背面)
-            CreateShapeLayer(psdImage, "back",
-                width: A + X,
-                height: Y + (4 * C),
-                x: A + (2 * Z) + X,
-                y: B + Z - (2 * C),
-                Color.White);
-
-            // Top (顶盖)
-            CreateShapeLayer(psdImage, "top",
-                width: X,
-                height: Z,
-                x: A + Z,
-                y: B,
-                Color.White);
-
-            // Bottom (底盖)
-            CreateShapeLayer(psdImage, "bottom",
-                width: X,
-                height: Z,
-                x: A + (2 * Z) + X,
-                y: B + Z + Y,
-                Color.White);
-
-            // --- 辅助线组 ---
-            AddGuidelines(psdImage, X, Y, Z, A, B, C);
-            
-            DrawInfoPanelAssets(psdImage, assets, dim);
-
-            // 5. 保存到内存流返回
-            using (var ms = new MemoryStream())
+            // 4. 创建并绘制 PSD
+            using (var psdImage = new PsdImage(totalWidth, totalHeight))
             {
-                var saveOptions = new PsdOptions
+                psdImage.SetResolution(DPI, DPI);
+
+                // --- 阶段 2: 绘制刀版结构 (5% - 40%) ---
+                onProgress?.Invoke(10, "正在绘制刀版结构...");
+
+                // BG (背景/整体轮廓)
+                CreateShapeLayer(psdImage, "BG",
+                    width: (2 * X) + (2 * Z) + (2 * A),
+                    height: Y + (4 * C),
+                    x: 0,
+                    y: B + Z - (2 * C),
+                    Color.White);
+
+                onProgress?.Invoke(15, "正在绘制侧面板...");
+
+                // Left (左侧面)
+                CreateShapeLayer(psdImage, "left",
+                    width: A + X,
+                    height: Y + (4 * C),
+                    x: 0,
+                    y: B + Z - (2 * C),
+                    Color.White);
+
+                // Front (正面)
+                CreateShapeLayer(psdImage, "front",
+                    width: X,
+                    height: Y + (4 * C),
+                    x: A + Z,
+                    y: B + Z - (2 * C),
+                    Color.White);
+
+                onProgress?.Invoke(25, "正在绘制主面板...");
+
+                // Right (右侧面)
+                CreateShapeLayer(psdImage, "right",
+                    width: X,
+                    height: Y + (4 * C),
+                    x: A + Z + X,
+                    y: B + Z - (2 * C),
+                    Color.White);
+
+                // Back (背面)
+                CreateShapeLayer(psdImage, "back",
+                    width: A + X,
+                    height: Y + (4 * C),
+                    x: A + (2 * Z) + X,
+                    y: B + Z - (2 * C),
+                    Color.White);
+
+                onProgress?.Invoke(35, "正在绘制顶底盖...");
+
+                // Top (顶盖)
+                CreateShapeLayer(psdImage, "top",
+                    width: X,
+                    height: Z,
+                    x: A + Z,
+                    y: B,
+                    Color.White);
+
+                // Bottom (底盖)
+                CreateShapeLayer(psdImage, "bottom",
+                    width: X,
+                    height: Z,
+                    x: A + (2 * Z) + X,
+                    y: B + Z + Y,
+                    Color.White);
+
+                // --- 阶段 3: 绘制内容与辅助线 (40% - 70%) ---
+                onProgress?.Invoke(40, "正在生成智能辅助线...");
+
+                // 辅助线组
+                AddGuidelines(psdImage, X, Y, Z, A, B, C);
+
+                onProgress?.Invoke(55, "正在渲染动态文本和条码...");
+
+                // 绘制信息面板内容
+                DrawInfoPanelAssets(psdImage, assets, dim);
+
+                onProgress?.Invoke(70, "图层渲染完成，准备压缩保存...");
+
+                // --- 阶段 4: 保存文件 (70% - 100%) ---
+                // 5. 保存到内存流返回
+                using (var ms = new MemoryStream())
                 {
-                    CompressionMethod = CompressionMethod.RLE,
-                    ColorMode = ColorModes.Rgb
-                };
-                psdImage.Save(ms, saveOptions);
-                return ms.ToArray();
+                    var saveOptions = new PsdOptions
+                    {
+                        CompressionMethod = CompressionMethod.RLE,
+                        ColorMode = ColorModes.Rgb,
+                        // ✅ 修正：使用 ProgressEventHandlerInfo
+                        ProgressEventHandler = (ProgressEventHandlerInfo info) =>
+                        {
+                            // 简单的防止除以零检查
+                            if (info.MaxValue > 0)
+                            {
+                                // 将 Aspose 的保存进度 (0-100) 映射到总任务进度的 (70-100)
+                                int saveProgress = 70 + (int)((info.Value / (double)info.MaxValue) * 30);
+                                onProgress?.Invoke(saveProgress, "正在生成文件流...");
+                            }
+                        }
+                    };
+
+                    psdImage.Save(ms, saveOptions);
+
+                    onProgress?.Invoke(100, "生成完成");
+                    return ms.ToArray();
+                }
             }
+        }
+        catch (Exception)
+        {
+            onProgress?.Invoke(0, "生成失败");
+            throw;
         }
     }
 
-    // --- 以下私有方法保持完全不变 ---
+    // --- 以下私有方法保持原有逻辑不变 ---
 
     private void AddGuidelines(PsdImage psdImage, int X, int Y, int Z, int A, int B, int C)
     {
         var horizontalWidth = 2 * X + 2 * Z + 2 * A;
         var verticalHeight = Y + 2 * Z + 2 * B - 4 * C;
-        
+
         var topIndex = psdImage.Layers.Length;
         var lineGroup = psdImage.AddLayerGroup("GuidelineGroup", topIndex, false);
 
@@ -245,93 +283,60 @@ public class AsposePsdGenerator : IPsdGenerator
             Console.WriteLine($"Error creating layer {layerName}: {ex.Message}");
         }
     }
-    
-    
-    /// <summary>
-/// 绘制信息面板的所有文本资产
-/// </summary>
-private void DrawInfoPanelAssets(PsdImage psdImage, PackagingAssets assets, PackagingDimensions dim)
-{
-    var info = assets.Texts.InfoPanel;
-    if (info == null) return;
 
-    // --- 布局参数计算 (模拟定位在背板 Back Panel) ---
-    // 你需要根据实际刀版逻辑获取 Back 面板的坐标
-    // 假设：X, Y, Z, A, B, C 已经在上层计算好，或者通过参数传进来
-    // 这里为了演示，我们重新简单计算一下 Back 面板的起始点 (参考 GenerateInternal 中的逻辑)
-    
-    var X = CmToPixels(dim.Length);
-    var Y = CmToPixels(dim.Height);
-    var Z = CmToPixels(dim.Width);
-    var A = CmToPixels(dim.BleedLeftRight);
-    var B = CmToPixels(dim.BleedTopBottom);
-    var C = CmToPixels(dim.InnerBleed);
+    private void DrawInfoPanelAssets(PsdImage psdImage, PackagingAssets assets, PackagingDimensions dim)
+    {
+        var info = assets.Texts.InfoPanel;
+        if (info == null) return;
 
-    // Back 面板的左上角坐标 (参考 CreateShapeLayer("back", ...))
-    int startX = A + (2 * Z) + X; 
-    int startY = B + Z - (2 * C);
-    int panelWidth = A + X; // 背板宽度
+        var X = CmToPixels(dim.Length);
+        var Y = CmToPixels(dim.Height);
+        var Z = CmToPixels(dim.Width);
+        var A = CmToPixels(dim.BleedLeftRight);
+        var B = CmToPixels(dim.BleedTopBottom);
+        var C = CmToPixels(dim.InnerBleed);
 
-    // 定义文本区域的内边距 (Padding)
-    int padding = 30; 
-    int currentY = startY + padding;
-    int textAreaWidth = panelWidth - (2 * padding);
-    int lineHeight = 50; // 这里的行高是预估的，如果文本很长需要自动换行计算高度
+        // Back 面板的左上角坐标
+        int startX = A + (2 * Z) + X;
+        int startY = B + Z - (2 * C);
+        int panelWidth = A + X; // 背板宽度
 
-    // 字号 6pt
-    float fontSize = 6f;
+        int padding = 30;
+        int currentY = startY + padding;
+        int textAreaWidth = panelWidth - (2 * padding);
 
-    // --- 依次生成图层 ---
+        float fontSize = 6f;
 
-    // 1. Ingredients (成分)
-    // 假设文本框高度为 100 像素
-    CreateRichTextLayer(psdImage, "Ingredients", "INGREDIENTS:", info.Ingredients, 
-        new Rectangle(startX + padding, currentY, textAreaWidth, 100), fontSize);
-    currentY += 110; // 移动 Y 轴
+        // --- 依次生成图层 ---
+        CreateRichTextLayer(psdImage, "Ingredients", "INGREDIENTS:", info.Ingredients,
+            new Rectangle(startX + padding, currentY, textAreaWidth, 100), fontSize);
+        currentY += 110;
 
-    // 2. Directions (使用方法) - 你要求的例子
-    CreateRichTextLayer(psdImage, "Directions", "DIRECTIONS:", info.Directions, 
-        new Rectangle(startX + padding, currentY, textAreaWidth, 80), fontSize);
-    currentY += 90;
+        CreateRichTextLayer(psdImage, "Directions", "DIRECTIONS:", info.Directions,
+            new Rectangle(startX + padding, currentY, textAreaWidth, 80), fontSize);
+        currentY += 90;
 
-    // 3. Warnings (警告)
-    CreateRichTextLayer(psdImage, "Warnings", "WARNINGS:", info.Warnings, 
-        new Rectangle(startX + padding, currentY, textAreaWidth, 80), fontSize);
-    currentY += 90;
+        CreateRichTextLayer(psdImage, "Warnings", "WARNINGS:", info.Warnings,
+            new Rectangle(startX + padding, currentY, textAreaWidth, 80), fontSize);
+        currentY += 90;
 
-    // 4. Manufacturer (制造商)
-    CreateRichTextLayer(psdImage, "Manufacturer", "MANUFACTURER:", info.Manufacturer, 
-        new Rectangle(startX + padding, currentY, textAreaWidth, 50), fontSize);
-    currentY += 60;
+        CreateRichTextLayer(psdImage, "Manufacturer", "MANUFACTURER:", info.Manufacturer,
+            new Rectangle(startX + padding, currentY, textAreaWidth, 50), fontSize);
+        currentY += 60;
 
-    // 5. Address (地址)
-    CreateRichTextLayer(psdImage, "Address", "ADDRESS:", info.Address, 
-        new Rectangle(startX + padding, currentY, textAreaWidth, 50), fontSize);
-    currentY += 60;
+        CreateRichTextLayer(psdImage, "Address", "ADDRESS:", info.Address,
+            new Rectangle(startX + padding, currentY, textAreaWidth, 50), fontSize);
+        currentY += 60;
 
-    // 6. Origin (原产地)
-    CreateRichTextLayer(psdImage, "Origin", "MADE IN:", info.Origin, 
-        new Rectangle(startX + padding, currentY, textAreaWidth, 50), fontSize);
-}
-    
-    /// <summary>
-    /// 创建富文本图层（支持 标题加粗 + 内容常规 的组合样式）
-    /// </summary>
-    /// <param name="psdImage">PSD 对象</param>
-    /// <param name="layerName">图层名称</param>
-    /// <param name="label">标题（将加粗），如 "Directions:"</param>
-    /// <param name="content">内容（常规），如 "Cleanse and dry..."</param>
-    /// <param name="rect">文本框区域</param>
-    /// <param name="fontSizePt">字号（点）</param>
-    /// <summary>
-    /// 创建富文本图层（支持 标题加粗 + 内容常规 的组合样式）
-    /// </summary>
+        CreateRichTextLayer(psdImage, "Origin", "MADE IN:", info.Origin,
+            new Rectangle(startX + padding, currentY, textAreaWidth, 50), fontSize);
+    }
+
     private void CreateRichTextLayer(PsdImage psdImage, string layerName, string label, string content, Rectangle rect, float fontSizePt)
     {
         if (string.IsNullOrWhiteSpace(content)) return;
 
         // 1. 创建文本图层
-        // 初始化时先只放入标题和空格，Aspose 会自动生成第一个 Portion (Items[0])
         var textLayer = psdImage.AddTextLayer(label + " ", rect);
         textLayer.DisplayName = layerName;
 
@@ -339,26 +344,24 @@ private void DrawInfoPanelAssets(PsdImage psdImage, PackagingAssets assets, Pack
         var textData = textLayer.TextData;
 
         float fontSizePixels = PtToPixels(fontSizePt);
-        // TextData.Items[0] 是默认生成的第一个文本片段
+        
+        // 标题片段 (加粗)
         var labelPortion = textData.Items[0];
         labelPortion.Style.FontName = "Arial";
         labelPortion.Style.FontSize = fontSizePixels;
-        labelPortion.Style.FauxBold = true; // 加粗
+        labelPortion.Style.FauxBold = true;
         labelPortion.Style.FillColor = Color.Black;
-        // [修复] 枚举类型是 JustificationMode，属性是 Justification
-        labelPortion.Paragraph.Justification = JustificationMode.Left; 
+        labelPortion.Paragraph.Justification = JustificationMode.Left;
 
-        // --- 添加第二个片段 (内容: Cleanse and dry...) ---
-        // 使用 ProducePortion 创建新片段
+        // 内容片段 (常规)
         var contentPortion = textData.ProducePortion();
         contentPortion.Text = content;
         contentPortion.Style.FontName = "Arial";
         contentPortion.Style.FontSize = fontSizePixels;
-        contentPortion.Style.FauxBold = false; // 不加粗
+        contentPortion.Style.FauxBold = false;
         contentPortion.Style.FillColor = Color.Black;
         contentPortion.Paragraph.Justification = JustificationMode.Left;
 
-        // [修复] 使用 AddPortion 将片段加入文本数据
         textData.AddPortion(contentPortion);
 
         // 3. 应用更改
@@ -369,7 +372,7 @@ private void DrawInfoPanelAssets(PsdImage psdImage, PackagingAssets assets, Pack
     {
         return (int)Math.Round((cm / 2.54) * DPI);
     }
-    
+
     private float PtToPixels(float pt)
     {
         return (pt * DPI) / 72f;

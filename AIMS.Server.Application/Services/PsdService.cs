@@ -13,7 +13,7 @@ public class PsdService : IPsdService
         _psdGenerator = psdGenerator;
     }
 
-    public async Task<byte[]> CreatePsdFileAsync(PsdRequestDto dto)
+    public async Task<byte[]> CreatePsdFileAsync(PsdRequestDto dto, Action<int, string>? onProgress = null)
     {
         // 1. 转换规格 (Dimensions) DTO -> Domain Entity
         var spec = dto.Specifications;
@@ -62,6 +62,6 @@ public class PsdService : IPsdService
         // 3. 调用生成器
         // ❌ 错误写法：return await _psdGenerator.GeneratePsdAsync(dimensions, dto.Assets); 
         // ✅ 正确写法：传入上面创建的 assets 变量
-        return await _psdGenerator.GeneratePsdAsync(dimensions, assets);
+        return await _psdGenerator.GeneratePsdAsync(dimensions, assets, onProgress);
     }
 }
