@@ -69,8 +69,7 @@ public class PlmApiService : IPlmApiService
 
             var responseString = await response.GetStringAsync();
 
-            // ✅ 核心修改：使用 BarCodeDto 进行泛型解析
-            // 匹配结构: { "data": { "bar_code": "...", "bar_code_path": "..." } }
+           
             var plmResult = JsonConvert.DeserializeObject<PlmResponse<BarCodeDto>>(responseString);
 
             if (plmResult == null) throw new Exception("PLM 响应为空");
