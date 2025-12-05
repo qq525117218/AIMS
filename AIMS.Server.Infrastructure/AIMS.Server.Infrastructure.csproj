@@ -15,7 +15,6 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
     <PackageReference Include="Pomelo.EntityFrameworkCore.MySql" Version="8.0.3" />
     <PackageReference Include="StackExchange.Redis" Version="2.10.1" />
-    <PackageReference Include="XY.SignAuthorization" Version="2.0.0.5-beta" />
   </ItemGroup>
 
     <ItemGroup>
