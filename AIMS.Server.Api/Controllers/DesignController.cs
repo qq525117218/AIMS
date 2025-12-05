@@ -1,8 +1,8 @@
-﻿using System.Collections.Concurrent; // 用于简单缓存，生产环境建议用 Redis
+﻿using System.Collections.Concurrent; 
 using AIMS.Server.Application.DTOs;
 using AIMS.Server.Application.DTOs.Psd;
 using AIMS.Server.Application.Services;
-using AIMS.Server.Domain.Interfaces; // 为了使用 IRedisService
+using AIMS.Server.Domain.Interfaces; 
 using Microsoft.AspNetCore.Mvc;
 
 namespace AIMS.Server.Api.Controllers;
@@ -12,10 +12,9 @@ namespace AIMS.Server.Api.Controllers;
 public class DesignController : ControllerBase
 {
     private readonly IPsdService _psdService;
-    private readonly IRedisService _redisService; // 注入 Redis 用于存进度
+    private readonly IRedisService _redisService; 
     private readonly ILogger<DesignController> _logger;
 
-    // 建议把文件存到临时目录，Redis只存路径，避免 Redis 内存爆炸
     private static readonly string TempFileDir = Path.Combine(Path.GetTempPath(), "AIMS_PSD_Files");
 
     public DesignController(IPsdService psdService, IRedisService redisService, ILogger<DesignController> logger)
@@ -45,7 +44,6 @@ public class DesignController : ControllerBase
         await _redisService.SetAsync(redisKey, status, TimeSpan.FromMinutes(30));
 
         // 🔥 核心：开启后台任务 (Fire-and-Forget)
-        // 注意：在实际高并发生产环境中，建议使用 Hangfire 或 RabbitMQ，这里用 Task.Run 演示最简方案
         _ = Task.Run(async () => 
         {
             try
@@ -53,7 +51,6 @@ public class DesignController : ControllerBase
                 // 定义进度回调
                 Action<int, string> progressCallback = (percent, msg) =>
                 {
-                    // 优化：避免过于频繁写入 Redis
                     status.Progress = percent;
                     status.Message = msg;
                     _redisService.SetAsync(redisKey, status, TimeSpan.FromMinutes(30)).Wait();
@@ -62,7 +59,7 @@ public class DesignController : ControllerBase
                 // 执行生成
                 var fileBytes = await _psdService.CreatePsdFileAsync(request, progressCallback);
 
-                // 保存文件到磁盘
+                // 保存文件到磁盘 (物理文件名保持 taskId 不变，避免特殊字符问题)
                 string fileName = $"{taskId}.psd";
                 string filePath = Path.Combine(TempFileDir, fileName);
                 await System.IO.File.WriteAllBytesAsync(filePath, fileBytes);
@@ -71,8 +68,23 @@ public class DesignController : ControllerBase
                 status.Progress = 100;
                 status.Status = "Completed";
                 status.Message = "生成完成";
-                // 设置下载接口的相对路径 (假设前端拼 BaseUrl)
-                status.DownloadUrl = $"/api/design/download/{taskId}?fileName={request.ProjectName}.psd";
+
+                // ✅ 核心修改：构造符合业务要求的文件名后缀
+                // 格式要求：_“XxZxY”cm_YYMMDDHHMISS
+                // 映射关系：X=Length, Z=Width, Y=Height
+                var dim = request.Specifications.Dimensions;
+                
+                // 1. 规格部分: _10x5x15cm (长x宽x高)
+                string sizePart = $"_{dim.Length}x{dim.Width}x{dim.Height}cm";
+                
+                // 2. 时间部分: _231201123055 (YYMMDDHHMISS -> yyMMddHHmmss)
+                string timePart = $"_{DateTime.Now:yyMMddHHmmss}";
+
+                // 3. 组合最终下载文件名
+                string downloadName = $"{request.ProjectName}{sizePart}{timePart}.psd";
+
+                // 设置下载接口 URL，并通过 fileName 参数传递给前端
+                status.DownloadUrl = $"/api/design/download/{taskId}?fileName={downloadName}";
                 
                 await _redisService.SetAsync(redisKey, status, TimeSpan.FromMinutes(30));
             }
@@ -119,9 +131,11 @@ public class DesignController : ControllerBase
         }
 
         var fileStream = new FileStream(filePath, FileMode.Open, FileAccess.Read);
-        // 加上 .psd 后缀确保浏览器识别
-        if (!fileName.EndsWith(".psd")) fileName += ".psd";
         
+        // 加上 .psd 后缀确保浏览器识别 (虽然上面已经加了，这里做个兜底)
+        if (!fileName.EndsWith(".psd", StringComparison.OrdinalIgnoreCase)) fileName += ".psd";
+        
+        // 返回文件流，浏览器会根据 fileName 下载为指定名称
         return File(fileStream, "application/x-photoshop", fileName);
     }
 }

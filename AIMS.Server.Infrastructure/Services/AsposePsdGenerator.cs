@@ -7,8 +7,6 @@ using Aspose.PSD.FileFormats.Psd.Layers;
 using Aspose.PSD.FileFormats.Psd.Layers.FillLayers;
 using Aspose.PSD.FileFormats.Psd.Layers.FillSettings;
 using Aspose.PSD.ImageOptions;
-
-
 using Aspose.PSD.ProgressManagement;
 
 namespace AIMS.Server.Infrastructure.Services;
@@ -137,8 +135,11 @@ public class AsposePsdGenerator : IPsdGenerator
 
                 onProgress?.Invoke(55, "正在渲染动态文本和条码...");
 
-                // 绘制信息面板内容
+                // 绘制背面的信息面板内容 (原有逻辑)
                 DrawInfoPanelAssets(psdImage, assets, dim);
+
+                // ✅ 新增：绘制正面的主面板信息 (SellingPoints & Capacity)
+                DrawMainPanelAssets(psdImage, assets, dim);
 
                 onProgress?.Invoke(70, "图层渲染完成，准备压缩保存...");
 
@@ -150,7 +151,7 @@ public class AsposePsdGenerator : IPsdGenerator
                     {
                         CompressionMethod = CompressionMethod.RLE,
                         ColorMode = ColorModes.Rgb,
-                        // ✅ 修正：使用 ProgressEventHandlerInfo
+                        // 使用 ProgressEventHandlerInfo
                         ProgressEventHandler = (ProgressEventHandlerInfo info) =>
                         {
                             // 简单的防止除以零检查
@@ -176,8 +177,6 @@ public class AsposePsdGenerator : IPsdGenerator
             throw;
         }
     }
-
-    // --- 以下私有方法保持原有逻辑不变 ---
 
     private void AddGuidelines(PsdImage psdImage, int X, int Y, int Z, int A, int B, int C)
     {
@@ -330,6 +329,80 @@ public class AsposePsdGenerator : IPsdGenerator
 
         CreateRichTextLayer(psdImage, "Origin", "MADE IN:", info.Origin,
             new Rectangle(startX + padding, currentY, textAreaWidth, 50), fontSize);
+    }
+
+    /// <summary>
+    /// ✅ 新增：绘制主面板内容 (正面)
+    /// </summary>
+    private void DrawMainPanelAssets(PsdImage psdImage, PackagingAssets assets, PackagingDimensions dim)
+    {
+        var main = assets.Texts.MainPanel;
+        if (main == null) return;
+
+        // 获取基础像素尺寸
+        var X = CmToPixels(dim.Length); // 正面宽度
+        var Y = CmToPixels(dim.Height); // 正面高度
+        var Z = CmToPixels(dim.Width);
+        var A = CmToPixels(dim.BleedLeftRight);
+        var B = CmToPixels(dim.BleedTopBottom);
+        var C = CmToPixels(dim.InnerBleed); 
+
+        // --- 计算正面的坐标区域 ---
+        // 参考 CreateShapeLayer("front"...) 的坐标逻辑: x: A + Z, y: B + Z - (2 * C)
+        // 为了安全起见，文本内容我们基于视觉上的顶部开始，即 B + Z
+        int panelStartX = A + Z;
+        int panelStartY = B + Z; 
+        
+        int padding = 40; // 设置内边距
+        int contentWidth = X - (2 * padding);
+        int contentStartX = panelStartX + padding;
+
+        // 1. 绘制 SellingPoints (卖点)
+        // 策略：放在面板的中上部 (例如从 30% 处开始往下排)
+        if (main.SellingPoints != null && main.SellingPoints.Count > 0)
+        {
+            int startY = panelStartY + (int)(Y * 0.3); // 从高度的 30% 处开始
+            int lineHeight = 60; // 行高
+            float fontSize = 8f; // 字体大小
+
+            for (int i = 0; i < main.SellingPoints.Count; i++)
+            {
+                var pointText = main.SellingPoints[i];
+                if (string.IsNullOrWhiteSpace(pointText)) continue;
+
+                // 添加圆点符号
+                var textToShow = "• " + pointText;
+
+                var rect = new Rectangle(
+                    contentStartX, 
+                    startY + (i * lineHeight), 
+                    contentWidth, 
+                    lineHeight
+                );
+
+                // 使用空 Label，只显示 Content
+                CreateRichTextLayer(psdImage, $"SellingPoint_{i + 1}", "", textToShow, rect, fontSize);
+            }
+        }
+
+        // 2. 绘制 CapacityInfo (净含量)
+        // 策略：放在面板底部上方
+        if (!string.IsNullOrWhiteSpace(main.CapacityInfo))
+        {
+            int areaHeight = 100;
+            // Y坐标 = 面板顶部 + 面板高度 - 底部留白 - 文本区域高度
+            int startY = panelStartY + Y - padding - areaHeight;
+
+            var rect = new Rectangle(
+                contentStartX,
+                startY,
+                contentWidth,
+                areaHeight
+            );
+
+            // 净含量通常字号稍大
+            CreateRichTextLayer(psdImage, "CapacityInfo", "", main.CapacityInfo, rect, 10f);
+        }
     }
 
     private void CreateRichTextLayer(PsdImage psdImage, string layerName, string label, string content, Rectangle rect, float fontSizePt)
