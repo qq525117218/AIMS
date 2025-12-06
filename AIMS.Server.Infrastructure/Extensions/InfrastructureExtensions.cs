@@ -3,10 +3,14 @@ using AIMS.Server.Application.Services;
 using AIMS.Server.Domain.Interfaces;
 using AIMS.Server.Infrastructure.Services;
 using Microsoft.Extensions.DependencyInjection;
+// 引入必要的命名空间
+using Aspose.PSD; 
+// 注意：Aspose.Words 和 Aspose.Pdf 的 License 类名都是 License，
+// 为避免冲突，下面代码中使用全限定名 (Aspose.Words.License)
 
 namespace AIMS.Server.Infrastructure.Extensions;
 
- public static class InfrastructureExtensions
+public static class InfrastructureExtensions
 {
     /// <summary>
     /// 注册基础设施层的服务（包括 Aspose License 初始化）
@@ -14,8 +18,6 @@ namespace AIMS.Server.Infrastructure.Extensions;
     public static IServiceCollection AddInfrastructureServices(this IServiceCollection services)
     {
         // 1. 注册 Aspose 服务实现
-        // 注意：这里假设你已经在 Infrastructure 层实现了 AsposePsdGenerator
-        // 如果还没有实现，请先创建该类，或者暂时注释掉下面这行
         services.AddScoped<IPsdGenerator, AsposePsdGenerator>();
         services.AddScoped<IWordParser, AsposeWordParser>();
         services.AddScoped<IWordService, WordService>();
@@ -36,38 +38,94 @@ namespace AIMS.Server.Infrastructure.Extensions;
             // 请确保 namespace 和文件夹名字准确
             var resourceName = "AIMS.Server.Infrastructure.Licenses.Aspose.Total.NET.lic";
 
-            using (var stream = assembly.GetManifestResourceStream(resourceName))
-            {
-                if (stream == null)
-                {
-                    // 尝试模糊搜索，防止命名空间不匹配导致找不到
-                    var allResources = assembly.GetManifestResourceNames();
-                    resourceName = allResources.FirstOrDefault(x => x.EndsWith("Aspose.Total.NET.lic"));
-                    
-                    if (resourceName != null)
-                    {
-                        using var stream2 = assembly.GetManifestResourceStream(resourceName);
-                        var license = new Aspose.PSD.License();
-                        license.SetLicense(stream2);
-                        Console.WriteLine($"[System] Aspose License loaded from: {resourceName}");
-                        return;
-                    }
+            // 1. 获取 License 资源流
+            Stream? resourceStream = assembly.GetManifestResourceStream(resourceName);
 
-                    Console.ForegroundColor = ConsoleColor.Yellow;
-                    Console.WriteLine("[Warning] 未找到 Aspose License 嵌入资源，将使用评估模式运行。");
+            // 如果找不到，尝试模糊搜索
+            if (resourceStream == null)
+            {
+                var allResources = assembly.GetManifestResourceNames();
+                var foundName = allResources.FirstOrDefault(x => x.EndsWith("Aspose.Total.NET.lic"));
+                if (foundName != null)
+                {
+                    resourceName = foundName;
+                    resourceStream = assembly.GetManifestResourceStream(foundName);
+                    Console.WriteLine($"[System] 自动定位到 License 资源: {resourceName}");
+                }
+            }
+
+            if (resourceStream == null)
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine("==================================================================");
+                Console.WriteLine("[Warning] 未找到 Aspose License 嵌入资源！");
+                Console.WriteLine("          Aspose 所有组件将以【评估模式】运行 (会有水印/红色文字)。");
+                Console.WriteLine("==================================================================");
+                Console.ResetColor();
+                return;
+            }
+
+            // 2. 关键步骤：将资源流复制到 MemoryStream
+            // 这样可以重复读取同一个流给不同的组件使用 (PSD, Words, PDF...)
+            using (var ms = new MemoryStream())
+            {
+                resourceStream.CopyTo(ms);
+                resourceStream.Dispose(); // 复制完成后释放原始资源流
+
+                Console.WriteLine("----------- Aspose License Status -----------");
+
+                // --- 初始化 Aspose.PSD ---
+                try
+                {
+                    ms.Position = 0; // 重置流位置
+                    var psdLic = new Aspose.PSD.License();
+                    psdLic.SetLicense(ms);
+                    Console.WriteLine(" [PSD]   License: ✅ Success");
+                }
+                catch (Exception ex)
+                {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine($" [PSD]   License: ❌ Failed ({ex.Message})");
                     Console.ResetColor();
-                    return;
                 }
 
-                var lic = new Aspose.PSD.License();
-                lic.SetLicense(stream);
-                Console.WriteLine("[System] Aspose License set successfully.");
+                // --- 初始化 Aspose.Words (解决 Word 文档红色文字问题) ---
+                try
+                {
+                    ms.Position = 0; // 重置流位置
+                    var wordsLic = new Aspose.Words.License();
+                    wordsLic.SetLicense(ms);
+                    Console.WriteLine(" [Words] License: ✅ Success");
+                }
+                catch (Exception ex)
+                {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine($" [Words] License: ❌ Failed ({ex.Message})");
+                    Console.ResetColor();
+                }
+
+                // --- 初始化 Aspose.PDF (解决之前的条形码 PDF 处理问题) ---
+                try
+                {
+                    // 如果项目没引用 Aspose.PDF，请注释掉这一块
+                    ms.Position = 0; // 重置流位置
+                    var pdfLic = new Aspose.Pdf.License();
+                    pdfLic.SetLicense(ms);
+                    Console.WriteLine(" [PDF]   License: ✅ Success");
+                }
+                catch (Exception ex)
+                {
+                    // 仅显示警告，不影响主程序
+                    Console.WriteLine($" [PDF]   License: ⚠️ Skipped or Failed ({ex.Message})");
+                }
+                
+                Console.WriteLine("---------------------------------------------");
             }
         }
         catch (Exception ex)
         {
             Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine($"[Error] Aspose License 初始化失败: {ex.Message}");
+            Console.WriteLine($"[Fatal Error] Aspose License 初始化过程发生严重异常: {ex.Message}");
             Console.ResetColor();
         }
     }

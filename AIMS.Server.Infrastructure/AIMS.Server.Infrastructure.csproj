@@ -1,10 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-    <PropertyGroup>
-        <TargetFramework>net8.0</TargetFramework>
-        <ImplicitUsings>enable</ImplicitUsings>
-        <Nullable>enable</Nullable>
-    </PropertyGroup>
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Flurl" Version="4.0.0" />
@@ -13,38 +13,44 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
     <PackageReference Include="Pomelo.EntityFrameworkCore.MySql" Version="8.0.3" />
     <PackageReference Include="StackExchange.Redis" Version="2.10.1" />
-<!-- csproj 中确认依赖配置 -->
+    <PackageReference Include="System.Drawing.Common" Version="8.0.0" />
+
     <PackageReference Include="SkiaSharp" Version="3.119.0" />
     <PackageReference Include="SkiaSharp.NativeAssets.Linux" Version="3.119.0" />
-<PackageReference Include="Aspose.Drawing" Version="24.9.0.0" />
-    
+
+    <PackageReference Include="Aspose.Drawing" Version="24.9.0.0" />
   </ItemGroup>
 
-    <ItemGroup>
-      <ProjectReference Include="..\AIMS.Server.Application\AIMS.Server.Application.csproj" />
-      <ProjectReference Include="..\AIMS.Server.Domain\AIMS.Server.Domain.csproj" />
-	  
-    </ItemGroup>
-	
-	<!-- ✅ 新增：将 License 文件设置为嵌入式资源 -->
-    <ItemGroup>
-      <EmbeddedResource Include="Licenses\Aspose.Total.NET.lic">
-        <LogicalName>AIMS.Server.Infrastructure.Licenses.Aspose.Total.NET.lic</LogicalName>
-      </EmbeddedResource>
-    </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\AIMS.Server.Application\AIMS.Server.Application.csproj" />
+    <ProjectReference Include="..\AIMS.Server.Domain\AIMS.Server.Domain.csproj" />
+  </ItemGroup>
 
-    <ItemGroup>
-      <Reference Include="Aspose.Drawing">
-        <HintPath>..\libs\Aspose.Drawing.dll</HintPath>
-      </Reference>
-      <Reference Include="Aspose.PSD">
-        <HintPath>..\libs\Aspose.PSD.dll</HintPath>
-      </Reference>
-      <Reference Include="Aspose.Words">
-        <HintPath>..\libs\Aspose.Words.dll</HintPath>
-      </Reference>
-   
-    </ItemGroup>
-  
+  <ItemGroup>
+    <EmbeddedResource Include="Licenses\Aspose.Total.NET.lic">
+      <LogicalName>AIMS.Server.Infrastructure.Licenses.Aspose.Total.NET.lic</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="Aspose.Drawing">
+      <HintPath>libs/Aspose.Drawing.dll</HintPath>
+    </Reference>
+
+    <Reference Include="Aspose.PDF">
+      <HintPath>libs/Aspose.PDF.dll</HintPath>
+    </Reference>
+
+    <Reference Include="Aspose.PSD">
+      <HintPath>libs/Aspose.PSD.dll</HintPath>
+    </Reference>
+    <Reference Include="Aspose.Words">
+      <HintPath>libs/Aspose.Words.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Assets\Templates\" />
+  </ItemGroup>
 
 </Project>
