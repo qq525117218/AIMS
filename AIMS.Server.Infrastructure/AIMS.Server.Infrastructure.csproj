@@ -43,7 +43,6 @@
       <Reference Include="Aspose.Words">
         <HintPath>..\libs\Aspose.Words.dll</HintPath>
       </Reference>
-	
    
     </ItemGroup>
   

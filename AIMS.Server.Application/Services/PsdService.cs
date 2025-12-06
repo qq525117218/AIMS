@@ -15,7 +15,7 @@ public class PsdService : IPsdService
 
     public async Task<byte[]> CreatePsdFileAsync(PsdRequestDto dto, Action<int, string>? onProgress = null)
     {
-        // 1. 转换规格 (Dimensions) DTO -> Domain Entity
+        // 1. 转换规格 (Dimensions)
         var spec = dto.Specifications;
         var dimensions = new PackagingDimensions(
             spec.Dimensions.Length,
@@ -26,8 +26,7 @@ public class PsdService : IPsdService
             spec.PrintConfig.BleedInner
         );
 
-        // 2. 转换素材 (Assets) DTO -> Domain Entity
-        // 这里我们手动创建一个新的 Domain 对象，将 DTO 的值赋给它
+        // 2. 转换素材 (Assets)
         var assets = new PackagingAssets
         {
             Texts = new TextAssets
@@ -37,7 +36,11 @@ public class PsdService : IPsdService
                     BrandName = dto.Assets.Texts.MainPanel.BrandName,
                     ProductName = dto.Assets.Texts.MainPanel.ProductName,
                     CapacityInfo = dto.Assets.Texts.MainPanel.CapacityInfo,
-                    SellingPoints = dto.Assets.Texts.MainPanel.SellingPoints
+                    // 确保映射了其他字段如 SellingPoints, Manufacturer, Address 等...
+                    SellingPoints = dto.Assets.Texts.MainPanel.SellingPoints,
+                    CapacityInfoBack = dto.Assets.Texts.MainPanel.CapacityInfoBack,
+                    Manufacturer = dto.Assets.Texts.MainPanel.Manufacturer,
+                    Address = dto.Assets.Texts.MainPanel.Address
                 },
                 InfoPanel = new InfoPanelInfo
                 {
@@ -54,14 +57,14 @@ public class PsdService : IPsdService
                 Barcode = new BarcodeInfo
                 {
                     Value = dto.Assets.DynamicImages.Barcode.Value,
-                    Type = dto.Assets.DynamicImages.Barcode.Type
+                    Type = dto.Assets.DynamicImages.Barcode.Type,
+                    // ✅ 新增：映射 Url
+                    Url = dto.Assets.DynamicImages.Barcode.Url
                 }
             }
         };
 
         // 3. 调用生成器
-        // ❌ 错误写法：return await _psdGenerator.GeneratePsdAsync(dimensions, dto.Assets); 
-        // ✅ 正确写法：传入上面创建的 assets 变量
         return await _psdGenerator.GeneratePsdAsync(dimensions, assets, onProgress);
     }
 }
