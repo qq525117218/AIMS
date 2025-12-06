@@ -7,14 +7,17 @@
     </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Aspose.Drawing" Version="24.9.0" />
-    <PackageReference Include="Aspose.Words" Version="25.7.0" />
     <PackageReference Include="Flurl" Version="4.0.0" />
     <PackageReference Include="Flurl.Http" Version="4.0.2" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.13" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
     <PackageReference Include="Pomelo.EntityFrameworkCore.MySql" Version="8.0.3" />
     <PackageReference Include="StackExchange.Redis" Version="2.10.1" />
+<!-- csproj 中确认依赖配置 -->
+    <PackageReference Include="SkiaSharp" Version="3.119.0" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux" Version="3.119.0" />
+<PackageReference Include="Aspose.Drawing" Version="24.9.0.0" />
+    
   </ItemGroup>
 
     <ItemGroup>
@@ -32,14 +35,17 @@
 
     <ItemGroup>
       <Reference Include="Aspose.Drawing">
-        <HintPath>D:\BaiduNetdiskDownload\Aspose.Drawing\Aspose.Drawing for .NET v25.7.0\lib\netstandard2.0\Aspose.Drawing.dll</HintPath>
+        <HintPath>..\libs\Aspose.Drawing.dll</HintPath>
       </Reference>
       <Reference Include="Aspose.PSD">
-        <HintPath>D:\BaiduNetdiskDownload\Aspose.PSD\Aspose.PSD for .NET v25.7.0\lib\net8.0\Aspose.PSD.dll</HintPath>
+        <HintPath>..\libs\Aspose.PSD.dll</HintPath>
       </Reference>
       <Reference Include="Aspose.Words">
-        <HintPath>C:\Users\zob\Downloads\Aspose.Words for .NET v25.10\Aspose.Words for .NET v25.10.0\lib\net8.0\Aspose.Words.dll</HintPath>
+        <HintPath>..\libs\Aspose.Words.dll</HintPath>
       </Reference>
+	
+   
     </ItemGroup>
+  
 
 </Project>
