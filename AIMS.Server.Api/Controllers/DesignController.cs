@@ -130,12 +130,11 @@ public class DesignController : ControllerBase
             return NotFound(ApiResponse<string>.Fail(404, "文件已过期或不存在"));
         }
 
-        var fileStream = new FileStream(filePath, FileMode.Open, FileAccess.Read);
-        
-        // 加上 .psd 后缀确保浏览器识别 (虽然上面已经加了，这里做个兜底)
+        // 加上 .psd 后缀确保浏览器识别
         if (!fileName.EndsWith(".psd", StringComparison.OrdinalIgnoreCase)) fileName += ".psd";
         
-        // 返回文件流，浏览器会根据 fileName 下载为指定名称
-        return File(fileStream, "application/x-photoshop", fileName);
+        // ✅ 修改建议：使用 PhysicalFile 替代 FileStream
+        // PhysicalFile 自动处理断点续传 (Range 请求)、ETag 和文件流的高效传输
+        return PhysicalFile(filePath, "application/x-photoshop", fileName);
     }
 }

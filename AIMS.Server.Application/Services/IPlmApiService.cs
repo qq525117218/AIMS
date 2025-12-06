@@ -12,4 +12,10 @@ public interface IPlmApiService
     /// <param name="code">SKU编码</param>
     /// <returns>条码数据 (String)</returns>
     Task<BarCodeDto> GetBarCodeAsync(string code);
+    
+    /// <summary>
+    /// 获取品牌详情
+    /// </summary>
+    /// <param name="code">品牌编码/ID (根据实际业务含义，此处对应第三方入参的code)</param>
+    Task<BrandDetailDto> GetBrandDetailAsync(string code);
 }

@@ -84,6 +84,44 @@ public class PlmApiService : IPlmApiService
             throw;
         }
     }
+    public async Task<BrandDetailDto> GetBrandDetailAsync(string code)
+    {
+        // 1. 构建请求载荷
+        var payload = new { code = code };
+        
+        // 2. 生成签名
+        var queryParam = GenSign(payload);
+
+        try
+        {
+            // 3. 构建 URL
+            var url = _options.BaseUrl.AppendPathSegment("/Brand/BrandDetail");
+            _logger.LogInformation("Calling PLM BrandDetail API: {Url}, Code: {Code}", url, code);
+
+            // 4. 发起 HTTP POST 请求
+            var response = await url
+                .SetQueryParams(queryParam)
+                .WithTimeout(TimeSpan.FromSeconds(15))
+                .PostJsonAsync(payload);
+
+            var responseString = await response.GetStringAsync();
+
+            // 5. 反序列化 (使用泛型 PlmResponse<BrandDetailDto>)
+            var plmResult = JsonConvert.DeserializeObject<PlmResponse<BrandDetailDto>>(responseString);
+
+            // 6. 校验结果
+            if (plmResult == null) throw new Exception("PLM 响应为空");
+            if (!plmResult.Success) throw new Exception($"PLM 业务异常: {plmResult.Message}");
+
+            // 7. 返回数据 (如果为 null 则返回空对象，防止上层空引用，可根据业务需要调整)
+            return plmResult.Data ?? new BrandDetailDto();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "获取品牌详情失败");
+            throw; // 抛出异常由全局过滤器处理
+        }
+    }
 
     // 签名方法保持不变...
     private PlmBaseQueryParam GenSign<T>(T signData) where T : class
