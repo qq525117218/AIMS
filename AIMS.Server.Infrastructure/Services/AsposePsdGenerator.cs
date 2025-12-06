@@ -66,7 +66,7 @@ public class AsposePsdGenerator : IPsdGenerator
                 if (assets.Images?.Barcode != null && !string.IsNullOrEmpty(assets.Images.Barcode.Url))
                 {
                     onProgress?.Invoke(65, "正在处理条形码 (PDF转换中)...");
-                   // await DrawBarcodeSmartObjectAsync(psdImage, assets.Images.Barcode.Url, dim);
+                    await DrawBarcodeSmartObjectAsync(psdImage, assets.Images.Barcode.Url, dim);
                 }
 
                 onProgress?.Invoke(80, "渲染完成，准备保存...");
