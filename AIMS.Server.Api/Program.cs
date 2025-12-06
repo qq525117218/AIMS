@@ -1,12 +1,10 @@
-using System.IdentityModel.Tokens.Jwt;
+
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
-using System.Text.Unicode;
 using AIMS.Server.Api.Filters;
 using AIMS.Server.Application.Options;
 using AIMS.Server.Application.Services;
-using AIMS.Server.Domain.Entities;
 using AIMS.Server.Domain.Interfaces;
 using AIMS.Server.Infrastructure.Auth;
 using AIMS.Server.Infrastructure.DataBase;
@@ -16,7 +14,6 @@ using AIMS.Server.Infrastructure.Services;
 using DotNetEnv;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using StackExchange.Redis;
@@ -270,6 +267,8 @@ builder.Services.AddSwaggerGen(c =>
 });
 
 var app = builder.Build();
+
+
 
 // =========================================================================
 // 4. 管道配置

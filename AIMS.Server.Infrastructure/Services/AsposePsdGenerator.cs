@@ -305,6 +305,7 @@ public class AsposePsdGenerator : IPsdGenerator
     private void DrawInfoPanelAssets(PsdImage psdImage, PackagingAssets assets, PackagingDimensions dim)
     {
         var info = assets.Texts.InfoPanel;
+        var main = assets.Texts.MainPanel;
         
         var X = CmToPixels(dim.Length);
         var Y = CmToPixels(dim.Height);
@@ -336,11 +337,11 @@ public class AsposePsdGenerator : IPsdGenerator
                 new Rectangle(startX + padding, currentY, textAreaWidth, 80), fontSize);
             currentY += 90;
 
-            CreateRichTextLayer(psdImage, "Manufacturer_Back", "MANUFACTURER:", info.Manufacturer,
+            CreateRichTextLayer(psdImage, "Manufacturer_Back", "MANUFACTURER:", main.Manufacturer,
                 new Rectangle(startX + padding, currentY, textAreaWidth, 50), fontSize);
             currentY += 60;
 
-            CreateRichTextLayer(psdImage, "Address_Back", "ADDRESS:", info.Address,
+            CreateRichTextLayer(psdImage, "Address_Back", "ADDRESS:", main.Address,
                 new Rectangle(startX + padding, currentY, textAreaWidth, 50), fontSize);
             currentY += 60;
 
@@ -405,7 +406,7 @@ public class AsposePsdGenerator : IPsdGenerator
             CreateRichTextLayer(psdImage, "CapacityInfo_Front", "", main.CapacityInfo, rect, 10f);
         }
 
-        if (!string.IsNullOrWhiteSpace(main.Address))
+        /*if (!string.IsNullOrWhiteSpace(main.Address))
         {
             currentBottomY -= textRowHeight;
             currentBottomY -= 10; 
@@ -419,7 +420,7 @@ public class AsposePsdGenerator : IPsdGenerator
             currentBottomY -= 10; 
             CreateRichTextLayer(psdImage, "MainManufacturer", "", main.Manufacturer, 
                 new Rectangle(contentStartX, currentBottomY, contentWidth, textRowHeight), 6f);
-        }
+        }*/
     }
 
     private void AddGuidelines(PsdImage psdImage, int X, int Y, int Z, int A, int B, int C)
