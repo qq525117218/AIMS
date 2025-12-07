@@ -4,7 +4,8 @@ using System.Text.Json;
 using AIMS.Server.Application.DTOs;
 using AIMS.Server.Application.DTOs.Psd;
 using AIMS.Server.Application.Services;
-using AIMS.Server.Domain.Interfaces; 
+using AIMS.Server.Domain.Interfaces;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace AIMS.Server.Api.Controllers;

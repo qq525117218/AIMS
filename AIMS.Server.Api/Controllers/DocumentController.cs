@@ -1,12 +1,14 @@
 ﻿using AIMS.Server.Application.DTOs.Document;
 using AIMS.Server.Application.DTOs;
 using AIMS.Server.Application.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace AIMS.Server.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class DocumentController : ControllerBase
 {
     private readonly IWordService _wordService;
