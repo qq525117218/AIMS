@@ -27,12 +27,16 @@ public class AsposePsdGenerator : IPsdGenerator
     private const float DPI = 300f; 
     
     // --- 条形码尺寸 ---
-    private const double BARCODE_WIDTH_CM = 6.0; 
-    private const double BARCODE_HEIGHT_CM = 3.0; 
+    private const double BARCODE_WIDTH_CM = 10.0; 
+    private const double BARCODE_HEIGHT_CM = 5.0; 
 
     // --- 固定图标尺寸 ---
-    private const double ICON_WIDTH_CM = 5.0;
-    private const double ICON_HEIGHT_CM = 2.8;
+    private const double ICON_WIDTH_CM = 10;
+    private const double ICON_HEIGHT_CM = 5;
+
+    // ✅ 新增：Logo 最大限制尺寸 (宽8cm, 高4cm，防止 Logo 过大)
+    private const double LOGO_MAX_WIDTH_CM = 8.0;
+    private const double LOGO_MAX_HEIGHT_CM = 4.0;
 
     private static readonly HttpClient _httpClient = new HttpClient();
     
@@ -49,20 +53,19 @@ public class AsposePsdGenerator : IPsdGenerator
                 fontFolders.Add(customFontsDir);
             }
 
-            // 2. ✅ 关键修正：如果是 Windows，必须显式把系统字体目录加回来
+            // 2. 修正：如果是 Windows，必须显式把系统字体目录加回来
             if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows))
             {
                 fontFolders.Add(@"C:\Windows\Fonts"); 
             }
             else
             {
-                // Linux 下常见的字体路径 (可选，防止 Docker 只有自定义字体不够用)
+                // Linux 下常见的字体路径
                 fontFolders.Add("/usr/share/fonts");
                 fontFolders.Add("/usr/local/share/fonts");
             }
 
             // 3. 应用字体设置
-            // 第二个参数 true 表示递归扫描子文件夹
             if (fontFolders.Count > 0)
             {
                 FontSettings.SetFontsFolders(fontFolders.ToArray(), true);
@@ -149,6 +152,26 @@ public class AsposePsdGenerator : IPsdGenerator
                 }
             }
 
+            // ✅ 阶段 3.5: 处理动态品牌 Logo (新增逻辑) ---
+            var brandName = assets.Texts?.MainPanel?.BrandName;
+            if (!string.IsNullOrWhiteSpace(brandName))
+            {
+                // 清洗文件名，防止非法字符
+                var safeBrandName = string.Join("_", brandName.Split(Path.GetInvalidFileNameChars()));
+                string logoPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", "Logo", $"{safeBrandName}.psd");
+
+                if (File.Exists(logoPath))
+                {
+                    onProgress?.Invoke(78, $"正在置入品牌 Logo: {safeBrandName}...");
+                    // 调用专门的 Logo 置入方法
+                    EmbedLogoAsSmartObject(tempPsdPath, logoPath, dim);
+                }
+                else
+                {
+                    Console.WriteLine($"[Warning] 未找到品牌 Logo 文件: {logoPath}，跳过置入。");
+                }
+            }
+
             // --- 阶段 4: 处理固定图标 ---
             if (File.Exists(fixedIconPath))
             {
@@ -180,9 +203,10 @@ public class AsposePsdGenerator : IPsdGenerator
         }
     }
 
+    // ... [EmbedFixedAssetAsSmartObject 方法保持不变] ...
     /// <summary>
-/// ✅ 架构师修正版: 采用等比缩放与严格 DPI 同步，解决 Save 崩溃问题
-/// </summary>
+    /// 架构师修正版: 采用等比缩放与严格 DPI 同步，解决 Save 崩溃问题
+    /// </summary>
     private void EmbedFixedAssetAsSmartObject(string targetPsdPath, string assetPath, PackagingDimensions dim)
     {
         // 1. 基础校验
@@ -195,8 +219,6 @@ public class AsposePsdGenerator : IPsdGenerator
 
         string tempOutputPath = targetPsdPath + ".tmp";
         
-
-        // 2. 加载图像 (使用 using 确保资源释放)
         using (var targetImage = (PsdImage)Aspose.PSD.Image.Load(targetPsdPath))
         using (var srcPsd = (PsdImage)Aspose.PSD.Image.Load(assetPath))
         {
@@ -204,28 +226,20 @@ public class AsposePsdGenerator : IPsdGenerator
             float targetDpiY = (float)targetImage.VerticalResolution;
             const double cmToInch = 1.0 / 2.54;
 
-            // --- 核心修复 A: 计算逻辑改为“等比缩放适应容器” ---
-            
-            // 定义最大容器尺寸 (原逻辑中的固定尺寸作为 MaxBounds)
             int maxBoxWidth = Math.Max(1, (int)Math.Round(ICON_WIDTH_CM * cmToInch * targetDpiX));
             int maxBoxHeight = Math.Max(1, (int)Math.Round(ICON_HEIGHT_CM * cmToInch * targetDpiY));
 
-            // 计算缩放比例 (参考你的测试代码逻辑)
             double scaleX = (double)maxBoxWidth / srcPsd.Width;
             double scaleY = (double)maxBoxHeight / srcPsd.Height;
-            // 使用 Min 确保图片完全放入框内且不变形 (Contain模式)
             double scale = Math.Min(scaleX, scaleY); 
 
-            // 计算最终实际像素尺寸
             int newWidth = Math.Max(1, (int)Math.Round(srcPsd.Width * scale));
             int newHeight = Math.Max(1, (int)Math.Round(srcPsd.Height * scale));
 
-            // 3. 计算位置 (传入实际尺寸，确保居中逻辑正确)
             var pos = CalculateFixedIconPosition(targetImage, dim, newWidth, newHeight);
             int destLeft = pos.X;
             int destTop = pos.Y;
 
-            // 4. 创建透明占位图层 (尺寸必须与即将置入的图完全一致)
             var placeholder = targetImage.AddRegularLayer();
             placeholder.DisplayName = "FixedIcon_Placeholder";
             placeholder.Left = destLeft;
@@ -233,51 +247,120 @@ public class AsposePsdGenerator : IPsdGenerator
             placeholder.Right = destLeft + newWidth;
             placeholder.Bottom = destTop + newHeight;
 
-            // 填充透明像素 (初始化 Buffer，避免脏数据)
             var transparentPixels = new int[newWidth * newHeight];
             placeholder.SaveArgb32Pixels(new Aspose.PSD.Rectangle(0, 0, newWidth, newHeight), transparentPixels);
 
-            // 5. 转换为智能对象
             var smartLayer = targetImage.SmartObjectProvider.ConvertToSmartObject(new[] { placeholder });
             smartLayer.DisplayName = "FixedIcon_SmartObject";
 
-            // --- 核心修复 B: 预处理源图，确保“物理数据”与“显示意图”一致 ---
-
-            // 调整源图尺寸 (使用高质量插值，避免锯齿)
             if (srcPsd.Width != newWidth || srcPsd.Height != newHeight)
             {
                 srcPsd.Resize(newWidth, newHeight, ResizeType.LanczosResample);
             }
             
-            // 强制同步 DPI (至关重要！避免 ReplaceContents 因 DPI 差异计算错误的变换矩阵)
             srcPsd.HorizontalResolution = targetDpiX;
             srcPsd.VerticalResolution = targetDpiY;
 
-            // 6. 替换内容
             var resolution = new ResolutionSetting(targetDpiX, targetDpiY);
             smartLayer.ReplaceContents(srcPsd, resolution);
 
-            // 7. 再次校准图层位置 (ReplaceContents 可能会重置部分属性，重新锁定位置)
             smartLayer.Left = destLeft;
             smartLayer.Top = destTop;
-            // 注意：不要强制设置 Right/Bottom，让 SmartObject 根据 Content 自动计算，防止再次拉伸
 
-            // 8. 保存 (使用 RLE 压缩，兼容性最好)
             var saveOptions = new PsdOptions
             {
                 CompressionMethod = CompressionMethod.RLE,
                 ColorMode = ColorModes.Rgb
             };
             
-            // 这里 Save 应该就能成功了，因为内部数据结构现在是完美的 1:1 匹配
             targetImage.Save(tempOutputPath, saveOptions);
         }
 
-        // 9. 原子性文件操作
         if (File.Exists(targetPsdPath)) File.Delete(targetPsdPath);
         File.Move(tempOutputPath, targetPsdPath);
     }
 
+    /// <summary>
+    /// ✅ 新增: 专门用于处理品牌 Logo 的置入逻辑
+    /// 复用了 EmbedFixedAssetAsSmartObject 的核心算法，但使用了 Logo 专用的尺寸和定位逻辑
+    /// </summary>
+    private void EmbedLogoAsSmartObject(string targetPsdPath, string assetPath, PackagingDimensions dim)
+    {
+        if (!File.Exists(assetPath)) return;
+        if (!File.Exists(targetPsdPath)) return;
+
+        string tempOutputPath = targetPsdPath + ".tmp";
+
+        using (var targetImage = (PsdImage)Aspose.PSD.Image.Load(targetPsdPath))
+        using (var srcPsd = (PsdImage)Aspose.PSD.Image.Load(assetPath))
+        {
+            float targetDpiX = (float)targetImage.HorizontalResolution;
+            float targetDpiY = (float)targetImage.VerticalResolution;
+            const double cmToInch = 1.0 / 2.54;
+
+            // 1. 计算 Logo 的最大像素容器 (使用 LOGO_MAX_WIDTH_CM)
+            int maxBoxWidth = Math.Max(1, (int)Math.Round(LOGO_MAX_WIDTH_CM * cmToInch * targetDpiX));
+            int maxBoxHeight = Math.Max(1, (int)Math.Round(LOGO_MAX_HEIGHT_CM * cmToInch * targetDpiY));
+
+            // 2. 等比缩放计算
+            double scaleX = (double)maxBoxWidth / srcPsd.Width;
+            double scaleY = (double)maxBoxHeight / srcPsd.Height;
+            double scale = Math.Min(scaleX, scaleY); // 确保完全放入且不变形
+
+            int newWidth = Math.Max(1, (int)Math.Round(srcPsd.Width * scale));
+            int newHeight = Math.Max(1, (int)Math.Round(srcPsd.Height * scale));
+
+            // 3. 计算 Logo 位置 (主面板顶部居中)
+            var pos = CalculateLogoPosition(targetImage, dim, newWidth, newHeight);
+            int destLeft = pos.X;
+            int destTop = pos.Y;
+
+            // 4. 创建占位图层
+            var placeholder = targetImage.AddRegularLayer();
+            placeholder.DisplayName = "BrandLogo_Placeholder";
+            placeholder.Left = destLeft;
+            placeholder.Top = destTop;
+            placeholder.Right = destLeft + newWidth;
+            placeholder.Bottom = destTop + newHeight;
+
+            // 填充透明像素初始化
+            var transparentPixels = new int[newWidth * newHeight];
+            placeholder.SaveArgb32Pixels(new Aspose.PSD.Rectangle(0, 0, newWidth, newHeight), transparentPixels);
+
+            // 5. 转为智能对象并替换内容
+            var smartLayer = targetImage.SmartObjectProvider.ConvertToSmartObject(new[] { placeholder });
+            smartLayer.DisplayName = "BrandLogo_SmartObject";
+
+            // 调整源图尺寸与 DPI
+            if (srcPsd.Width != newWidth || srcPsd.Height != newHeight)
+            {
+                srcPsd.Resize(newWidth, newHeight, ResizeType.LanczosResample);
+            }
+            srcPsd.HorizontalResolution = targetDpiX;
+            srcPsd.VerticalResolution = targetDpiY;
+
+            // 执行替换
+            var resolution = new ResolutionSetting(targetDpiX, targetDpiY);
+            smartLayer.ReplaceContents(srcPsd, resolution);
+
+            // 重新校准位置
+            smartLayer.Left = destLeft;
+            smartLayer.Top = destTop;
+
+            // 6. 保存
+            var saveOptions = new PsdOptions
+            {
+                CompressionMethod = CompressionMethod.RLE,
+                ColorMode = ColorModes.Rgb
+            };
+            targetImage.Save(tempOutputPath, saveOptions);
+        }
+
+        if (File.Exists(targetPsdPath)) File.Delete(targetPsdPath);
+        File.Move(tempOutputPath, targetPsdPath);
+    }
+
+    // ... [EmbedBarcodePdfAsSmartObject 方法保持不变] ...
     private void EmbedBarcodePdfAsSmartObject(string targetPsdPath, string pdfPath, PackagingDimensions dim)
     {
         if (!File.Exists(pdfPath) || !File.Exists(targetPsdPath)) return;
@@ -336,6 +419,7 @@ public class AsposePsdGenerator : IPsdGenerator
         File.Move(tempOutputPath, targetPsdPath);
     }
 
+    // ... [CreateScaledContainer, CalculateBarcodePosition 等方法保持不变] ...
     private PsdImage CreateScaledContainer(RasterImage source, int width, int height, float dpiX, float dpiY)
     {
         var container = new PsdImage(width, height);
@@ -366,6 +450,47 @@ public class AsposePsdGenerator : IPsdGenerator
         return container;
     }
 
+   // ====================================================================================
+    // ⬇️ 核心定位算法重构：基于折线(Fold Lines)的绝对坐标系，确保秩序感
+    // ====================================================================================
+
+    /// <summary>
+    /// ✅ [Logo 定位] 锁定 Front Panel (正面)
+    /// 垂直策略：顶部折线向下 12% (视觉重心)
+    /// </summary>
+    private Point CalculateLogoPosition(PsdImage psdImage, PackagingDimensions dim, int widthPx, int heightPx)
+    {
+        // 1. 获取基础坐标
+        var X = CmToPixels(dim.Length); // 正面宽度
+        var Y = CmToPixels(dim.Height); // 正面高度
+        var Z = CmToPixels(dim.Width);  // 侧面宽度
+        var A = CmToPixels(dim.BleedLeftRight); // 粘口
+        var B = CmToPixels(dim.BleedTopBottom); // 顶部出血
+
+        // 2. 锁定 Front Panel 区域 (根据 DrawStructureLayers 逻辑，正面是第2个面)
+        // 左边界 = 粘口(A) + 左侧面(Z)
+        int panelLeft = A + Z;
+        
+        // 3. 计算绝对水平居中
+        int centerX = panelLeft + (X / 2);
+        int destX = centerX - (widthPx / 2) + 300;
+
+        // 4. 计算垂直位置 (严格基于 Top Fold 折线)
+        // Top Fold = B + Z (忽略出血和盖板，直接找盒身顶线)
+        int topFoldY = B + Z;
+        
+        // 留白 = 盒身高度的 12% (黄金视觉位)
+        int marginTop = (int)(Y * 0.12);
+        
+        int destY = topFoldY + marginTop;
+
+        return new Point(destX, destY);
+    }
+
+    /// <summary>
+    /// ✅ [条形码定位] 锁定 Back Panel (背面)
+    /// 垂直策略：底部折线向上 10% (底部留白)
+    /// </summary>
     private Point CalculateBarcodePosition(PsdImage psdImage, PackagingDimensions dim, int widthPx, int heightPx)
     {
         var X = CmToPixels(dim.Length);
@@ -373,22 +498,31 @@ public class AsposePsdGenerator : IPsdGenerator
         var Z = CmToPixels(dim.Width);
         var A = CmToPixels(dim.BleedLeftRight);
         var B = CmToPixels(dim.BleedTopBottom);
-        var C = CmToPixels(dim.InnerBleed);
 
-        int backPanelX = A + (2 * Z) + X;
-        int backPanelY = B + Z - (2 * C);
-        int backPanelWidth = A + X;
+        // 1. 锁定 Back Panel 区域 (第4个面)
+        // 左边界 = 粘口(A) + 左侧(Z) + 正面(X) + 右侧(Z)
+        int panelLeft = A + (2 * Z) + X;
+        
+        // 2. 水平居中 (Back Panel 宽度也是 X)
+        int centerX = panelLeft + (X / 2);
+        int destX = centerX - (widthPx / 2) ;
 
-        int panelCenterX = backPanelX + (backPanelWidth / 2);
-        int destLeft = panelCenterX - (widthPx / 2);
+        // 3. 垂直定位 (严格基于 Bottom Fold 折线)
+        // Bottom Fold = B + Z + Y
+        int bottomFoldY = B + Z + Y;
 
-        int bottomReserve = 100; 
-        int visualBottomY = backPanelY + Y + (2 * C);
-        int destTop = visualBottomY - bottomReserve - heightPx;
+        // 底部留白 = 10%
+        int marginBottom = (int)(Y * 0.10);
 
-        return new Point(destLeft, destTop);
+        int destY = bottomFoldY - marginBottom - heightPx;
+
+        return new Point(destX, destY);
     }
 
+    /// <summary>
+    /// ✅ [固定图标定位] 锁定 Back Panel (背面)
+    /// 垂直策略：紧贴条形码上方 (形成整齐的堆叠队列)
+    /// </summary>
     private Point CalculateFixedIconPosition(PsdImage psdImage, PackagingDimensions dim, int widthPx, int heightPx)
     {
         var X = CmToPixels(dim.Length);
@@ -396,24 +530,35 @@ public class AsposePsdGenerator : IPsdGenerator
         var Z = CmToPixels(dim.Width);
         var A = CmToPixels(dim.BleedLeftRight);
         var B = CmToPixels(dim.BleedTopBottom);
-        var C = CmToPixels(dim.InnerBleed);
 
-        // 放在 Back Panel
-        int backPanelX = A + (2 * Z) + X;
-        int backPanelY = B + Z - (2 * C);
-        int backPanelWidth = A + X;
+        // 1. 锁定 Back Panel 区域
+        int panelLeft = A + (2 * Z) + X;
 
-        int centerX = backPanelX + (backPanelWidth / 2);
-        int left = centerX - (widthPx / 2);
+        // 2. 水平居中
+        int centerX = panelLeft + (X / 2);
+        int destX = centerX - (widthPx / 2) + 300;
 
-        // 垂直定位：位于条形码上方
-        int bottomReserve = 100 + 450; 
-        int visualBottomY = backPanelY + Y + (2 * C);
-        int top = visualBottomY - bottomReserve - heightPx;
+        // 3. 垂直定位 (堆叠逻辑)
+        // 先计算条形码的顶部位置作为锚点
+        // 注意：这里必须复用条形码的计算逻辑，保证严丝合缝
+        
+        int bottomFoldY = B + Z + Y;
+        int marginBottom = (int)(Y * 0.10);
+        
+        // 预估条形码高度 (为了计算锚点，这里需要知道条形码实际像素高度)
+        // 在 GenerateInternalAsync 中，条形码是动态生成的，这里我们使用标准常量反推，或者更安全的做法是留出足够的“安全区”
+        // 更好的方案：图标位于 底部折线向上 25% 处 (避开条形码区域)
+        
+        // 方案 B：相对比例定位 (更稳健，防止条形码高度变化导致重叠)
+        // 设条形码区域约占底部 20%，图标放在底部 22%~25% 的位置
+        int iconBottomMargin = (int)(Y * 0.28); // 底部向上 28%
+        
+        int destY = bottomFoldY - iconBottomMargin - heightPx;
 
-        return new Point(left, top);
+        return new Point(destX, destY);
     }
 
+   
     private void DrawStructureLayers(PsdImage psdImage, int X, int Y, int Z, int A, int B, int C, Action<int, string>? onProgress)
     {
         CreateShapeLayer(psdImage, "BG", (2 * X) + (2 * Z) + (2 * A), Y + (4 * C), 0, B + Z - (2 * C), Color.White);
