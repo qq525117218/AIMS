@@ -32,7 +32,7 @@ public class DesignController : ControllerBase
     }
 
     /// <summary>
-    /// 1. 提交生成任务 (支持幂等性：防止并发重复提交，但允许完成后重新生成)
+    /// 1. 提交生成任务 (支持幂等性：防止并发重复提交)
     /// </summary>
     [HttpPost("generate/psd/async")]
     public async Task<ApiResponse<string>> SubmitPsdGeneration([FromBody] PsdRequestDto request)
@@ -48,30 +48,34 @@ public class DesignController : ControllerBase
         string uniqueKeySource = $"{userSegment}:{request.ProjectName}:{JsonSerializer.Serialize(request.Specifications)}:{JsonSerializer.Serialize(request.Assets)}";
         string taskFingerprint = ComputeSha256Hash(uniqueKeySource);
         
-        // 2. 检查 Redis 锁 (并发控制)
         string fingerprintRedisKey = $"task_lock:psd:{taskFingerprint}";
-        var existingTaskId = await _redisService.GetAsync<string>(fingerprintRedisKey);
 
-        if (!string.IsNullOrEmpty(existingTaskId))
+        // ================== ✅ 修复点1：原子并发锁 ==================
+        // 预先生成一个新的 TaskId
+        string newTaskId = Guid.NewGuid().ToString("N");
+        
+        // 尝试抢锁：如果 Key 不存在，则设置成功并返回 true；否则返回 false
+        // 这也是原子操作，彻底防止两个线程同时进入
+        bool isLockAcquired = await _redisService.SetNxAsync(fingerprintRedisKey, newTaskId, TimeSpan.FromMinutes(30));
+
+        if (!isLockAcquired)
         {
-            // 检查旧任务状态
-            var oldStatus = await _redisService.GetAsync<PsdTaskStatusDto>($"task:psd:{existingTaskId}");
+            // 没抢到锁，说明任务已存在。获取旧的 TaskId
+            var existingTaskId = await _redisService.GetAsync<string>(fingerprintRedisKey);
             
-            // 优化逻辑：只有任务正在 "Processing" 时才拦截
-            // 如果任务已完成 (Completed/Failed)，我们允许指纹锁失效（或被清理），从而允许新任务生成
-            // 但为了安全起见，这里做一个双重检查：如果锁还在，且状态是 Processing，才视为重复提交
-            if (oldStatus != null && oldStatus.Status == "Processing")
+            // 双重检查：如果锁还在但取不到 ID（极罕见），则允许继续
+            if (!string.IsNullOrEmpty(existingTaskId))
             {
-                _logger.LogInformation($"[DesignController] 检测到正在进行的任务，复用 TaskId: {existingTaskId}");
-                return ApiResponse<string>.Success(existingTaskId, "任务正在进行中，请等待完成");
+                // 检查旧任务状态，如果是处理中或已完成，直接返回旧 ID
+                _logger.LogInformation($"[DesignController] 检测到重复提交，复用 TaskId: {existingTaskId}");
+                return ApiResponse<string>.Success(existingTaskId, "任务已存在");
             }
-            // 如果锁存在但任务已完成/失败，说明之前的 finally 清理可能失败了，或者是过期时间重叠
-            // 这里我们选择忽略旧锁，继续执行新任务
         }
 
         // ================== 开启新任务 ==================
-
-        string taskId = Guid.NewGuid().ToString("N");
+        
+        // 如果抢到了锁，newTaskId 就是当前有效 ID
+        string taskId = newTaskId; 
         string taskRedisKey = $"task:psd:{taskId}";
 
         // 初始化状态
@@ -83,36 +87,47 @@ public class DesignController : ControllerBase
             Message = "任务已准备就绪" 
         };
 
-        // A. 保存任务状态 (有效期 30 分钟)
+        // 保存任务初始状态
         await _redisService.SetAsync(taskRedisKey, status, TimeSpan.FromMinutes(30));
         
-        // B. 设置指纹锁 (有效期 30 分钟 - 作为兜底，正常情况会在 finally 中移除)
-        await _redisService.SetAsync(fingerprintRedisKey, taskId, TimeSpan.FromMinutes(30));
-
         // 🔥 开启后台任务 (Fire-and-Forget)
-        // 注意：在生产环境中，建议使用 IServiceScopeFactory 创建独立作用域，防止 Scoped 服务已被释放
         _ = Task.Run(async () => 
         {
+            long lastUpdateTick = 0; // 用于节流
+
             try
             {
                 // 定义进度回调
                 Action<int, string> progressCallback = (percent, msg) =>
                 {
-                    // 仅当进度有实质变化时才更新 Redis，减少网络 IO (可选优化)
-                    if (status.Progress != percent) 
+                    // 状态机保护：进度不回退
+                    if (percent < status.Progress) return;
+
+                    status.Progress = percent;
+                    status.Message = msg;
+
+                    // ✅ 修复点2：移除 .Wait()，使用非阻塞异步更新
+                    // 增加简单的节流机制（每 300ms 更新一次 Redis），防止高频 IO 拖慢生成速度
+                    long now = DateTime.UtcNow.Ticks;
+                    bool isImportantUpdate = percent >= 100 || percent == 0;
+                    
+                    if (isImportantUpdate || (now - lastUpdateTick) > TimeSpan.FromMilliseconds(300).Ticks)
                     {
-                        status.Progress = percent;
-                        status.Message = msg;
-                        _redisService.SetAsync(taskRedisKey, status, TimeSpan.FromMinutes(30)).Wait();
+                        lastUpdateTick = now;
+                        // Fire-and-forget 保存状态，吞掉异常防止 Crash
+                        _redisService.SetAsync(taskRedisKey, status, TimeSpan.FromMinutes(30))
+                            .ContinueWith(t => { 
+                                if (t.IsFaulted) _logger.LogWarning($"[DesignController] 更新进度 Redis 失败: {t.Exception?.InnerException?.Message}"); 
+                            });
                     }
                 };
 
-                // 1. 执行生成业务
-                progressCallback(10, "正在初始化生成器...");
+                // 1. 执行生成业务 (Aspose 生成器负责 0% - 90%)
+                progressCallback(5, "正在初始化生成器...");
                 var fileBytes = await _psdService.CreatePsdFileAsync(request, progressCallback);
 
-                // 2. 保存文件到磁盘
-                progressCallback(90, "正在保存文件...");
+                // 2. 保存文件到磁盘 (Controller 负责 90% - 95%)
+                progressCallback(92, "正在保存文件...");
                 string fileName = $"{taskId}.psd";
                 string filePath = Path.Combine(TempFileDir, fileName);
                 await System.IO.File.WriteAllBytesAsync(filePath, fileBytes);
@@ -123,12 +138,13 @@ public class DesignController : ControllerBase
                 string timePart = $"_{DateTime.Now:yyMMddHHmmss}";
                 string downloadName = $"{request.ProjectName}{sizePart}{timePart}.psd";
 
-                // 4. 更新最终状态
+                // 4. 更新最终状态 (100%)
                 status.Progress = 100;
                 status.Status = "Completed";
                 status.Message = "生成完成";
                 status.DownloadUrl = $"/api/design/download/{taskId}?fileName={downloadName}";
                 
+                // 确保最后一次状态必定写入
                 await _redisService.SetAsync(taskRedisKey, status, TimeSpan.FromMinutes(30));
             }
             catch (Exception ex)
@@ -137,13 +153,11 @@ public class DesignController : ControllerBase
                 
                 status.Status = "Failed";
                 status.Message = "生成失败: " + ex.Message;
-                // 失败状态也保留，以便前端查询原因
                 await _redisService.SetAsync(taskRedisKey, status, TimeSpan.FromMinutes(30));
             }
             finally
             {
-                // ✅ 核心修复：无论成功还是失败，任务结束时必须移除指纹锁
-                // 这确保了下一次相同的请求可以重新触发生成
+                // 任务结束，释放指纹锁
                 try 
                 {
                     await _redisService.RemoveAsync(fingerprintRedisKey);
@@ -151,8 +165,7 @@ public class DesignController : ControllerBase
                 }
                 catch (Exception cleanupEx)
                 {
-                    // 即使 Redis 连接异常，也不能让异常抛出导致 Crash，只记录日志
-                    _logger.LogWarning(cleanupEx, $"[DesignController] 释放指纹锁失败: {fingerprintRedisKey}");
+                    _logger.LogWarning(cleanupEx, "释放指纹锁失败");
                 }
             }
         });
@@ -180,7 +193,6 @@ public class DesignController : ControllerBase
     [HttpGet("download/{taskId}")]
     public IActionResult DownloadPsd(string taskId, [FromQuery] string fileName = "download.psd")
     {
-        // 安全检查：防止目录遍历攻击
         if (string.IsNullOrWhiteSpace(taskId) || taskId.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || taskId.Contains("..")) 
             return BadRequest(ApiResponse<string>.Fail(400, "非法请求"));
 
@@ -191,11 +203,9 @@ public class DesignController : ControllerBase
             return NotFound(ApiResponse<string>.Fail(404, "文件已过期或不存在"));
         }
 
-        // 规范化文件名
         if (string.IsNullOrWhiteSpace(fileName)) fileName = "download.psd";
         if (!fileName.EndsWith(".psd", StringComparison.OrdinalIgnoreCase)) fileName += ".psd";
         
-        // 使用 PhysicalFile 优化大文件传输
         return PhysicalFile(filePath, "application/x-photoshop", fileName);
     }
 

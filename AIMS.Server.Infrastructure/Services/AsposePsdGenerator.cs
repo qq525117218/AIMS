@@ -6,7 +6,7 @@ using Aspose.PSD.FileFormats.Psd;
 using Aspose.PSD.FileFormats.Psd.Layers;
 using Aspose.PSD.FileFormats.Psd.Layers.FillLayers;
 using Aspose.PSD.FileFormats.Psd.Layers.FillSettings;
-using Aspose.PSD.FileFormats.Psd.Layers.SmartObjects; // 必须引用
+using Aspose.PSD.FileFormats.Psd.Layers.SmartObjects;
 using Aspose.PSD.ImageOptions;
 using Aspose.PSD.ProgressManagement;
 
@@ -14,9 +14,9 @@ using Aspose.PSD.ProgressManagement;
 using Color = Aspose.PSD.Color;
 using PointF = Aspose.PSD.PointF;
 using Rectangle = Aspose.PSD.Rectangle;
-using Point = Aspose.PSD.Point; // 解决 Point 歧义
+using Point = Aspose.PSD.Point;
 
-// 引入 Aspose.Pdf 别名 (需引用 Aspose.PDF.dll)
+// 引入 Aspose.Pdf 别名 (需确保项目引用了 Aspose.PDF.dll)
 using AsposePdf = Aspose.Pdf; 
 using AsposePdfDevices = Aspose.Pdf.Devices;
 
@@ -47,13 +47,12 @@ public class AsposePsdGenerator : IPsdGenerator
         string? tempPsdPath = null;
         string? tempPdfPath = null;
         
-        // 固定图标路径 (建议配置在 appsettings 或使用 IWebHostEnvironment 获取)
-        // 这里假设它在运行目录下的 Assets 文件夹中
-        string fixedIconPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", "FixedIcon.psd");
+        // ✅ 修改点 1: 更新固定图标路径为 Templates 目录
+        string fixedIconPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", "Templates", "FixedIcon.psd");
 
         try
         {
-            // --- 阶段 1: 初始化与基础绘制 ---
+            // --- 阶段 1: 初始化与基础绘制 (0% - 10%) ---
             onProgress?.Invoke(1, "正在初始化画布参数...");
 
             var X = CmToPixels(dim.Length); 
@@ -72,7 +71,7 @@ public class AsposePsdGenerator : IPsdGenerator
             // 创建基础 PSD 的临时路径
             tempPsdPath = Path.GetTempFileName(); 
 
-            // --- 阶段 2: 生成基础 PSD (包含结构和文本) ---
+            // --- 阶段 2: 生成基础 PSD (10% - 70%) ---
             onProgress?.Invoke(5, "正在创建基础图层...");
             
             using (var psdImage = new PsdImage(totalWidth, totalHeight))
@@ -101,12 +100,12 @@ public class AsposePsdGenerator : IPsdGenerator
                 };
                 psdImage.Save(tempPsdPath, saveOptions);
             }
-            // 此时 psdImage 已 Dispose，tempPsdPath 文件句柄已释放
+            // 此时 psdImage 已 Dispose，tempPsdPath 文件句柄已释放，可以安全进行后续的文件操作
 
-            // --- 阶段 3: 处理条形码 (PDF -> Smart Object) ---
+            // --- 阶段 3: 处理条形码 (70% - 80%) ---
             if (assets.Images?.Barcode != null && !string.IsNullOrEmpty(assets.Images.Barcode.Url))
             {
-                onProgress?.Invoke(75, "正在下载条形码...");
+                onProgress?.Invoke(72, "正在下载条形码...");
                 
                 var pdfBytes = await _httpClient.GetByteArrayAsync(assets.Images.Barcode.Url);
                 if (pdfBytes.Length > 0)
@@ -114,16 +113,15 @@ public class AsposePsdGenerator : IPsdGenerator
                     tempPdfPath = Path.GetTempFileName();
                     await File.WriteAllBytesAsync(tempPdfPath, pdfBytes);
 
-                    onProgress?.Invoke(80, "正在置入条形码...");
-                    // 传入 tempPsdPath，方法内部会处理 读->写->替换 的逻辑
+                    onProgress?.Invoke(75, "正在处理条形码智能对象...");
                     EmbedBarcodePdfAsSmartObject(tempPsdPath, tempPdfPath, dim);
                 }
             }
 
-            // --- 阶段 4: 处理固定图标 (PSD -> Smart Object) ---
+            // --- 阶段 4: 处理固定图标 (80% - 85%) ---
             if (File.Exists(fixedIconPath))
             {
-                onProgress?.Invoke(90, "正在置入固定图标...");
+                onProgress?.Invoke(82, "正在置入固定图标...");
                 EmbedFixedAssetAsSmartObject(tempPsdPath, fixedIconPath, dim);
             }
             else
@@ -131,8 +129,8 @@ public class AsposePsdGenerator : IPsdGenerator
                 Console.WriteLine($"[Warning] 未找到固定图标文件: {fixedIconPath}");
             }
 
-            // --- 阶段 5: 读取最终文件并返回 ---
-            onProgress?.Invoke(95, "正在生成最终输出...");
+            // --- 阶段 5: 读取最终文件并返回 (85% - 90%) ---
+            onProgress?.Invoke(90, "生成完成，准备输出...");
             
             if (!File.Exists(tempPsdPath))
                 throw new FileNotFoundException("生成过程中文件丢失", tempPsdPath);
@@ -146,17 +144,96 @@ public class AsposePsdGenerator : IPsdGenerator
         }
         finally
         {
-            // 清理所有临时文件
             CleanupTempFile(tempPsdPath);
             CleanupTempFile(tempPdfPath);
-            onProgress?.Invoke(100, "处理完成");
         }
     }
 
     /// <summary>
-    /// 将本地 PDF 作为智能对象置入到目标 PSD 文件中
-    /// 采用 Save到新临时文件 -> Dispose -> Replace 策略避免文件锁
+    /// ✅ 修改点 2: 严格参考提供的 MergeSmartObjectScaled 方法进行逻辑重构
     /// </summary>
+    private void EmbedFixedAssetAsSmartObject(string targetPsdPath, string assetPath, PackagingDimensions dim)
+    {
+        if (!File.Exists(assetPath)) 
+        {
+            Console.WriteLine($"[Error] 固定图标源文件不存在: {assetPath}");
+            return;
+        }
+        if (!File.Exists(targetPsdPath)) return;
+
+        string tempOutputPath = targetPsdPath + ".tmp";
+
+        // 加载目标和源图
+        using (var targetImage = (PsdImage)Aspose.PSD.Image.Load(targetPsdPath))
+        using (var srcPsd = (PsdImage)Aspose.PSD.Image.Load(assetPath))
+        {
+            float targetDpiX = (float)targetImage.HorizontalResolution;
+            float targetDpiY = (float)targetImage.VerticalResolution;
+
+            // 1. 计算目标尺寸 (基于 ICON_WIDTH_CM 常量)
+            const double cmToInch = 1.0 / 2.54;
+            int newWidth = Math.Max(1, (int)Math.Round(ICON_WIDTH_CM * cmToInch * targetDpiX));
+            int newHeight = Math.Max(1, (int)Math.Round(ICON_HEIGHT_CM * cmToInch * targetDpiY));
+
+            // 2. 计算目标位置 (保持原有的位置计算逻辑)
+            var pos = CalculateFixedIconPosition(targetImage, dim, newWidth, newHeight);
+            int destLeft = pos.X;
+            int destTop = pos.Y;
+
+            // 3. 创建透明占位图层 (关键步骤：避免初始缩放矩阵)
+            var placeholder = targetImage.AddRegularLayer();
+            placeholder.DisplayName = "FixedIcon_Placeholder";
+            placeholder.Left = destLeft;
+            placeholder.Top = destTop;
+            placeholder.Right = destLeft + newWidth;
+            placeholder.Bottom = destTop + newHeight;
+
+            // 填充透明像素
+            var transparentPixels = new int[newWidth * newHeight];
+            for (int i = 0; i < transparentPixels.Length; i++)
+            {
+                transparentPixels[i] = unchecked((int)0x00000000);
+            }
+            placeholder.SaveArgb32Pixels(new Aspose.PSD.Rectangle(0, 0, newWidth, newHeight), transparentPixels);
+
+            // 4. 转换为智能对象
+            var smartLayer = targetImage.SmartObjectProvider.ConvertToSmartObject(new[] { placeholder });
+            smartLayer.DisplayName = "FixedIcon_SmartObject";
+
+            // 5. 调整源 PSD 尺寸与分辨率 (关键步骤：等比缩放源图以匹配容器)
+            if (srcPsd.Width != newWidth || srcPsd.Height != newHeight)
+            {
+                srcPsd.Resize(newWidth, newHeight); // 等比缩放，保证像素尺寸一致
+            }
+            srcPsd.HorizontalResolution = targetDpiX;
+            srcPsd.VerticalResolution = targetDpiY;
+
+            // 6. 替换内容
+            var resolution = new ResolutionSetting(targetDpiX, targetDpiY);
+            smartLayer.ReplaceContents(srcPsd, resolution);
+
+            // 7. 最终位置确认
+            if (smartLayer.Width != newWidth || smartLayer.Height != newHeight)
+            {
+                smartLayer.Resize(newWidth, newHeight);
+            }
+            smartLayer.Left = destLeft;
+            smartLayer.Top = destTop;
+
+            // 8. 保存到临时文件
+            targetImage.Save(tempOutputPath, new PsdOptions { 
+                CompressionMethod = CompressionMethod.RLE, 
+                ColorMode = ColorModes.Rgb 
+            });
+        }
+
+        // 9. 替换原文件
+        if (File.Exists(targetPsdPath)) File.Delete(targetPsdPath);
+        File.Move(tempOutputPath, targetPsdPath);
+    }
+
+    // --- 其他辅助方法保持不变 ---
+
     private void EmbedBarcodePdfAsSmartObject(string targetPsdPath, string pdfPath, PackagingDimensions dim)
     {
         if (!File.Exists(pdfPath) || !File.Exists(targetPsdPath)) return;
@@ -171,9 +248,7 @@ public class AsposePsdGenerator : IPsdGenerator
             float targetDpiX = (float)targetImage.HorizontalResolution;
             float targetDpiY = (float)targetImage.VerticalResolution;
 
-            // --- PDF 转 PNG ---
             var pdfPage = pdfDoc.Pages[1];
-            // 使用目标 DPI 渲染
             var pdfResolution = new AsposePdfDevices.Resolution((int)Math.Round(targetDpiX));
             var pngDevice = new AsposePdfDevices.PngDevice(pdfResolution);
             
@@ -185,16 +260,12 @@ public class AsposePsdGenerator : IPsdGenerator
             var raster = (RasterImage)loadedImage;
             raster.CacheData();
 
-            // --- 计算尺寸 ---
             const double cmToInch = 1.0 / 2.54;
             int targetWidthPx = (int)Math.Round(BARCODE_WIDTH_CM * cmToInch * targetDpiX);
             int targetHeightPx = (int)Math.Round(BARCODE_HEIGHT_CM * cmToInch * targetDpiY);
 
-            // --- 构建容器 PSD (Smart Object Content) ---
-            // 使用辅助方法创建缩放后的容器，确保不变形
             using var srcPsd = CreateScaledContainer(raster, targetWidthPx, targetHeightPx, targetDpiX, targetDpiY);
 
-            // --- 置入智能对象 ---
             var pos = CalculateBarcodePosition(targetImage, dim, targetWidthPx, targetHeightPx);
 
             var placeholder = targetImage.AddRegularLayer();
@@ -211,83 +282,22 @@ public class AsposePsdGenerator : IPsdGenerator
             smartLayer.ReplaceContents(srcPsd, resolutionSetting);
             smartLayer.ContentsBounds = new Rectangle(0, 0, targetWidthPx, targetHeightPx);
 
-            // --- 保存到【新】临时路径 ---
             targetImage.Save(tempOutputPath, new PsdOptions { 
                 CompressionMethod = CompressionMethod.RLE, 
                 ColorMode = ColorModes.Rgb 
             });
         } 
 
-        // --- 替换文件 ---
         if (File.Exists(targetPsdPath)) File.Delete(targetPsdPath);
         File.Move(tempOutputPath, targetPsdPath);
     }
 
-    /// <summary>
-    /// 将本地 PSD 图标作为智能对象置入
-    /// </summary>
-    private void EmbedFixedAssetAsSmartObject(string targetPsdPath, string assetPath, PackagingDimensions dim)
-    {
-        if (!File.Exists(targetPsdPath) || !File.Exists(assetPath)) return;
-
-        string tempOutputPath = targetPsdPath + ".tmp";
-
-        using (var targetImage = (PsdImage)Aspose.PSD.Image.Load(targetPsdPath))
-        {
-            // 加载图标素材
-            using var assetImage = (PsdImage)Aspose.PSD.Image.Load(assetPath);
-
-            float targetDpiX = (float)targetImage.HorizontalResolution;
-            float targetDpiY = (float)targetImage.VerticalResolution;
-
-            // 计算目标像素尺寸 (5x2.8cm)
-            const double cmToInch = 1.0 / 2.54;
-            int targetWidthPx = (int)Math.Round(ICON_WIDTH_CM * cmToInch * targetDpiX);
-            int targetHeightPx = (int)Math.Round(ICON_HEIGHT_CM * cmToInch * targetDpiY);
-
-            // 计算位置
-            var pos = CalculateFixedIconPosition(targetImage, dim, targetWidthPx, targetHeightPx);
-
-            // 创建占位
-            var placeholder = targetImage.AddRegularLayer();
-            placeholder.DisplayName = "Icon_Placeholder";
-            placeholder.Left = pos.X;
-            placeholder.Top = pos.Y;
-            placeholder.Right = pos.X + targetWidthPx;
-            placeholder.Bottom = pos.Y + targetHeightPx;
-
-            // 转智能对象
-            var smartLayer = targetImage.SmartObjectProvider.ConvertToSmartObject(new[] { placeholder });
-            smartLayer.DisplayName = "Fixed_Icon_SmartObject";
-
-            // 创建缩放容器并注入
-            using (var containerPsd = CreateScaledContainer(assetImage, targetWidthPx, targetHeightPx, targetDpiX, targetDpiY))
-            {
-                var resolutionSetting = new ResolutionSetting(targetDpiX, targetDpiY);
-                smartLayer.ReplaceContents(containerPsd, resolutionSetting);
-            }
-            
-            smartLayer.ContentsBounds = new Rectangle(0, 0, targetWidthPx, targetHeightPx);
-
-            // 保存
-            targetImage.Save(tempOutputPath, new PsdOptions { CompressionMethod = CompressionMethod.RLE, ColorMode = ColorModes.Rgb });
-        }
-
-        // 替换
-        if (File.Exists(targetPsdPath)) File.Delete(targetPsdPath);
-        File.Move(tempOutputPath, targetPsdPath);
-    }
-
-    /// <summary>
-    /// 辅助方法：创建一个标准尺寸的 PSD 容器，并将源图等比缩放居中放入
-    /// </summary>
     private PsdImage CreateScaledContainer(RasterImage source, int width, int height, float dpiX, float dpiY)
     {
         var container = new PsdImage(width, height);
         container.SetResolution(dpiX, dpiY);
         container.ColorMode = ColorModes.Rgb;
 
-        // 计算缩放比例 (Fit Center)
         double scaleX = (double)width / source.Width;
         double scaleY = (double)height / source.Height;
         double scale = Math.Min(scaleX, scaleY); 
@@ -295,17 +305,14 @@ public class AsposePsdGenerator : IPsdGenerator
         int newW = Math.Max(1, (int)(source.Width * scale));
         int newH = Math.Max(1, (int)(source.Height * scale));
 
-        // 缩放源图
         if (source.Width != newW || source.Height != newH)
         {
             source.Resize(newW, newH, ResizeType.LanczosResample);
         }
 
-        // 创建图层并绘制
         var layer = container.AddRegularLayer();
         layer.Left = 0; layer.Top = 0; layer.Right = width; layer.Bottom = height;
         
-        // 居中计算
         int offX = (width - newW) / 2;
         int offY = (height - newH) / 2;
 
@@ -325,17 +332,13 @@ public class AsposePsdGenerator : IPsdGenerator
         var B = CmToPixels(dim.BleedTopBottom);
         var C = CmToPixels(dim.InnerBleed);
 
-        // Back 面板区域
         int backPanelX = A + (2 * Z) + X;
         int backPanelY = B + Z - (2 * C);
         int backPanelWidth = A + X;
 
-        // 水平居中
         int panelCenterX = backPanelX + (backPanelWidth / 2);
         int destLeft = panelCenterX - (widthPx / 2);
 
-        // 垂直定位：位于背面底部上方
-        // 如果条形码太大，可以适当减小 reserve
         int bottomReserve = 100; 
         int visualBottomY = backPanelY + Y + (2 * C);
         int destTop = visualBottomY - bottomReserve - heightPx;
@@ -360,8 +363,7 @@ public class AsposePsdGenerator : IPsdGenerator
         int centerX = backPanelX + (backPanelWidth / 2);
         int left = centerX - (widthPx / 2);
 
-        // 垂直定位：比条形码更高一点
-        // 假设条形码预留 100 + 条形码高度(约350px)，我们再往上预留一些
+        // 垂直定位：位于条形码上方
         int bottomReserve = 100 + 450; 
         int visualBottomY = backPanelY + Y + (2 * C);
         int top = visualBottomY - bottomReserve - heightPx;
@@ -371,7 +373,6 @@ public class AsposePsdGenerator : IPsdGenerator
 
     private void DrawStructureLayers(PsdImage psdImage, int X, int Y, int Z, int A, int B, int C, Action<int, string>? onProgress)
     {
-        // 背景
         CreateShapeLayer(psdImage, "BG", (2 * X) + (2 * Z) + (2 * A), Y + (4 * C), 0, B + Z - (2 * C), Color.White);
 
         onProgress?.Invoke(15, "正在绘制侧面板...");
