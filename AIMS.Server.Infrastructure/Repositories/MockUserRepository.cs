@@ -8,7 +8,7 @@ public class MockUserRepository : IUserRepository
     public Task<bool> ValidateUserAsync(string username, string password)
     {
         // 数据模拟：硬编码校验
-        if (username == "admin" && password == "123456")
+        if (username == "admin" && password == "T9#kL2$v")
         {
             return Task.FromResult(true);
         }
