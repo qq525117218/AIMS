@@ -486,3 +486,5 @@ $RECYCLE.BIN/
 
 k8s/
 *.lic
+
+AIMS.Server.Infrastructure/Assets/
