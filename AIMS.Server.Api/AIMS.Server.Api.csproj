@@ -24,4 +24,9 @@
     <ProjectReference Include="..\AIMS.Server.Infrastructure\AIMS.Server.Infrastructure.csproj" />
   </ItemGroup>
 
+
+    <ItemGroup>
+        <RuntimeHostConfigurationOption Include="System.Drawing.EnableUnixSupport" Value="true" />
+    </ItemGroup>
+
 </Project>

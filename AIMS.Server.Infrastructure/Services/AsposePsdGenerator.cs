@@ -360,63 +360,90 @@ public class AsposePsdGenerator : IPsdGenerator
         File.Move(tempOutputPath, targetPsdPath);
     }
 
-    // ... [EmbedBarcodePdfAsSmartObject 方法保持不变] ...
+    /// <summary>
+    /// ✅ [修正版] 使用 Aspose.Words 渲染 PDF 条形码，避开 Linux 下 System.Drawing 崩溃问题
+    /// </summary>
     private void EmbedBarcodePdfAsSmartObject(string targetPsdPath, string pdfPath, PackagingDimensions dim)
     {
         if (!File.Exists(pdfPath) || !File.Exists(targetPsdPath)) return;
 
         string tempOutputPath = targetPsdPath + ".tmp";
 
-        using (var targetImage = (PsdImage)Aspose.PSD.Image.Load(targetPsdPath))
+        // 加上 try-catch 保护，防止图形渲染失败导致整个 API 502 崩溃
+        try
         {
-            using var pdfStream = new FileStream(pdfPath, FileMode.Open, FileAccess.Read, FileShare.Read);
-            using var pdfDoc = new AsposePdf.Document(pdfStream);
+            // 1. 使用 Aspose.Words 加载 PDF 文档 (更稳定的跨平台渲染引擎)
+            var pdfAsWordDoc = new Aspose.Words.Document(pdfPath);
 
-            float targetDpiX = (float)targetImage.HorizontalResolution;
-            float targetDpiY = (float)targetImage.VerticalResolution;
+            using (var targetImage = (PsdImage)Aspose.PSD.Image.Load(targetPsdPath))
+            {
+                float targetDpiX = (float)targetImage.HorizontalResolution;
+                float targetDpiY = (float)targetImage.VerticalResolution;
 
-            var pdfPage = pdfDoc.Pages[1];
-            var pdfResolution = new AsposePdfDevices.Resolution((int)Math.Round(targetDpiX));
-            var pngDevice = new AsposePdfDevices.PngDevice(pdfResolution);
-            
-            using var pageImageStream = new MemoryStream();
-            pngDevice.Process(pdfPage, pageImageStream);
-            pageImageStream.Position = 0;
+                // 2. 配置渲染选项 (输出为 PNG)
+                var saveOptions = new Aspose.Words.Saving.ImageSaveOptions(Aspose.Words.SaveFormat.Png)
+                {
+                    PageSet = new Aspose.Words.Saving.PageSet(0), // 只渲染第一页
+                    Resolution = targetDpiX,                       // 保持 DPI 一致
+                    UseHighQualityRendering = true,
+                    // 注意：这里的 System.Drawing.Color 是结构体，在 .NET 8 中通常安全，只有 GDI+ 绘图调用才危险
+                    PaperColor = System.Drawing.Color.Transparent 
+                };
 
-            using var loadedImage = Aspose.PSD.Image.Load(pageImageStream);
-            var raster = (RasterImage)loadedImage;
-            raster.CacheData();
+                using var pageImageStream = new MemoryStream();
 
-            const double cmToInch = 1.0 / 2.54;
-            int targetWidthPx = (int)Math.Round(BARCODE_WIDTH_CM * cmToInch * targetDpiX);
-            int targetHeightPx = (int)Math.Round(BARCODE_HEIGHT_CM * cmToInch * targetDpiY);
+                // 3. 执行渲染
+                pdfAsWordDoc.Save(pageImageStream, saveOptions);
+                pageImageStream.Position = 0;
 
-            // CreateScaledContainer 内部已经生成了全新的 PsdImage，所以它是“干净”的，不需要 Stream Wash
-            using var srcPsd = CreateScaledContainer(raster, targetWidthPx, targetHeightPx, targetDpiX, targetDpiY);
+                // 4. 将渲染好的图片作为光栅图像加载
+                using var loadedImage = Aspose.PSD.Image.Load(pageImageStream);
+                var raster = (RasterImage)loadedImage;
+                raster.CacheData();
 
-            var pos = CalculateBarcodePosition(targetImage, dim, targetWidthPx, targetHeightPx);
+                const double cmToInch = 1.0 / 2.54;
+                int targetWidthPx = (int)Math.Round(BARCODE_WIDTH_CM * cmToInch * targetDpiX);
+                int targetHeightPx = (int)Math.Round(BARCODE_HEIGHT_CM * cmToInch * targetDpiY);
 
-            var placeholder = targetImage.AddRegularLayer();
-            placeholder.DisplayName = "Barcode_Placeholder";
-            placeholder.Left = pos.X;
-            placeholder.Top = pos.Y;
-            placeholder.Right = pos.X + targetWidthPx;
-            placeholder.Bottom = pos.Y + targetHeightPx;
+                // 生成缩放后的 PSD 容器
+                using var srcPsd = CreateScaledContainer(raster, targetWidthPx, targetHeightPx, targetDpiX, targetDpiY);
 
-            var smartLayer = targetImage.SmartObjectProvider.ConvertToSmartObject(new[] { placeholder });
-            smartLayer.DisplayName = "Barcode_SmartObject";
-            
-            var resolutionSetting = new ResolutionSetting(targetDpiX, targetDpiY);
-            smartLayer.ReplaceContents(srcPsd, resolutionSetting);
-            smartLayer.ContentsBounds = new Rectangle(0, 0, targetWidthPx, targetHeightPx);
+                // 计算位置
+                var pos = CalculateBarcodePosition(targetImage, dim, targetWidthPx, targetHeightPx);
 
-            targetImage.Save(tempOutputPath, new PsdOptions { 
-                CompressionMethod = CompressionMethod.RLE 
-            });
-        } 
+                // 创建占位图层
+                var placeholder = targetImage.AddRegularLayer();
+                placeholder.DisplayName = "Barcode_Placeholder";
+                placeholder.Left = pos.X;
+                placeholder.Top = pos.Y;
+                placeholder.Right = pos.X + targetWidthPx;
+                placeholder.Bottom = pos.Y + targetHeightPx;
 
-        if (File.Exists(targetPsdPath)) File.Delete(targetPsdPath);
-        File.Move(tempOutputPath, targetPsdPath);
+                // 转换为智能对象
+                var smartLayer = targetImage.SmartObjectProvider.ConvertToSmartObject(new[] { placeholder });
+                smartLayer.DisplayName = "Barcode_SmartObject";
+                
+                // 替换内容
+                var resolutionSetting = new ResolutionSetting(targetDpiX, targetDpiY);
+                smartLayer.ReplaceContents(srcPsd, resolutionSetting);
+                smartLayer.ContentsBounds = new Aspose.PSD.Rectangle(0, 0, targetWidthPx, targetHeightPx);
+
+                // 保存 PSD
+                targetImage.Save(tempOutputPath, new PsdOptions { 
+                    CompressionMethod = CompressionMethod.RLE 
+                });
+            } 
+
+            // 成功后覆盖原文件
+            if (File.Exists(targetPsdPath)) File.Delete(targetPsdPath);
+            File.Move(tempOutputPath, targetPsdPath);
+        }
+        catch (Exception ex)
+        {
+            // 兜底保护：即使渲染失败，只记录日志，不让 API 崩溃
+            Console.WriteLine($"[Warning] 条形码渲染失败，已跳过置入: {ex.Message}");
+            if (File.Exists(tempOutputPath)) try { File.Delete(tempOutputPath); } catch { }
+        }
     }
 
     // ... [CreateScaledContainer, CalculateBarcodePosition 等方法保持不变] ...
@@ -599,27 +626,29 @@ public class AsposePsdGenerator : IPsdGenerator
 
         if (info != null)
         {
-            CreateRichTextLayer(psdImage, "Ingredients", "INGREDIENTS:", info.Ingredients,
+            //TODO 增加 产品英文名	PRODUCT_NAME_TXT
+
+            CreateRichTextLayer(psdImage, "INGREDIENTS_TXT", "INGREDIENTS:", info.Ingredients,
                 new Rectangle(startX + padding, currentY, textAreaWidth, 100), fontSize);
             currentY += 110;
 
-            CreateRichTextLayer(psdImage, "Directions", "DIRECTIONS:", info.Directions,
+          //  CreateRichTextLayer(psdImage, "Directions", "DIRECTIONS:", info.Directions,
+           //     new Rectangle(startX + padding, currentY, textAreaWidth, 80), fontSize);
+            currentY += 90;
+
+            CreateRichTextLayer(psdImage, "WARNINGS_TXT", "WARNINGS:", info.Warnings,
                 new Rectangle(startX + padding, currentY, textAreaWidth, 80), fontSize);
             currentY += 90;
 
-            CreateRichTextLayer(psdImage, "Warnings", "WARNINGS:", info.Warnings,
-                new Rectangle(startX + padding, currentY, textAreaWidth, 80), fontSize);
-            currentY += 90;
-
-            CreateRichTextLayer(psdImage, "Manufacturer_Back", "MANUFACTURER:", main.Manufacturer,
+            CreateRichTextLayer(psdImage, "MANUFACTURER_TXT", "MANUFACTURER:", main.Manufacturer,
                 new Rectangle(startX + padding, currentY, textAreaWidth, 50), fontSize);
             currentY += 60;
 
-            CreateRichTextLayer(psdImage, "Address_Back", "ADDRESS:", main.Address,
+            CreateRichTextLayer(psdImage, "MANUFACTURER_ADD_TXT", "ADDRESS:", main.Address,
                 new Rectangle(startX + padding, currentY, textAreaWidth, 50), fontSize);
             currentY += 60;
 
-            CreateRichTextLayer(psdImage, "Origin", "MADE IN:", info.Origin,
+            CreateRichTextLayer(psdImage, "MADE_IN _TXT", "MADE IN:", info.Origin,
                 new Rectangle(startX + padding, currentY, textAreaWidth, 50), fontSize);
         }
 

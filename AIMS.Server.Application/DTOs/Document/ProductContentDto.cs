@@ -41,4 +41,9 @@ public class ProductContentDto
     /// 建议使用方法 (已去除 "DIRECTIONS:" 前缀)
     /// </summary>
     public string Directions { get; set; } = string.Empty;
+    
+    /// <summary>
+    /// 产品优势 (已去除 "FUNCTIONS:" 前缀)
+    /// </summary>
+    public string Benefits { get; set; } = string.Empty;
 }

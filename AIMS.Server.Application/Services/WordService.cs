@@ -106,6 +106,10 @@ public class WordService : IWordService
                 {
                     dto.Directions = CleanPrefix(valueCol, "DIRECTIONS");
                 }
+                else if (keyCol.Contains("产品优势", StringComparison.OrdinalIgnoreCase))
+                {
+                    dto.Benefits = CleanPrefix(valueCol, "FUNCTIONS");
+                }
             }
         }
 

@@ -34,22 +34,23 @@ public class PsdService : IPsdService
                 MainPanel = new MainPanelInfo 
                 {
                     BrandName = dto.Assets.Texts.MainPanel.BrandName,
-                    ProductName = dto.Assets.Texts.MainPanel.ProductName,
-                    CapacityInfo = dto.Assets.Texts.MainPanel.CapacityInfo,
-                    // 确保映射了其他字段如 SellingPoints, Manufacturer, Address 等...
                     SellingPoints = dto.Assets.Texts.MainPanel.SellingPoints,
+                    CapacityInfo = dto.Assets.Texts.MainPanel.CapacityInfo,
                     CapacityInfoBack = dto.Assets.Texts.MainPanel.CapacityInfoBack,
                     Manufacturer = dto.Assets.Texts.MainPanel.Manufacturer,
                     Address = dto.Assets.Texts.MainPanel.Address
                 },
                 InfoPanel = new InfoPanelInfo
                 {
+                    ProductName = dto.Assets.Texts.InfoPanel.ProductName,
+                    ShelfLife = dto.Assets.Texts.InfoPanel.ShelfLife,
                     Ingredients = dto.Assets.Texts.InfoPanel.Ingredients,
                     Manufacturer = dto.Assets.Texts.InfoPanel.Manufacturer,
                     Origin = dto.Assets.Texts.InfoPanel.Origin,
                     Warnings = dto.Assets.Texts.InfoPanel.Warnings,
                     Directions = dto.Assets.Texts.InfoPanel.Directions,
-                    Address = dto.Assets.Texts.InfoPanel.Address
+                    Address = dto.Assets.Texts.InfoPanel.Address,
+                    Benefits = dto.Assets.Texts.InfoPanel.Benefits
                 }
             },
             Images = new DynamicImages
@@ -58,7 +59,6 @@ public class PsdService : IPsdService
                 {
                     Value = dto.Assets.DynamicImages.Barcode.Value,
                     Type = dto.Assets.DynamicImages.Barcode.Type,
-                    // ✅ 新增：映射 Url
                     Url = dto.Assets.DynamicImages.Barcode.Url
                 }
             }

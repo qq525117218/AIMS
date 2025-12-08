@@ -3,7 +3,7 @@
 public class MainPanelDto
 {
     public string BrandName { get; set; } = string.Empty;
-    public string ProductName { get; set; } = string.Empty;
+   
     public string CapacityInfo { get; set; } = string.Empty;
     
     // --- 新增字段开始 ---
