@@ -8,7 +8,7 @@ namespace AIMS.Server.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-//[Authorize]
+[Authorize]
 public class DocumentController : ControllerBase
 {
     private readonly IWordService _wordService;
