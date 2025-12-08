@@ -143,7 +143,8 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidIssuer = builder.Configuration["Jwt:Issuer"] ?? "AIMS_Server",
             ValidAudience = builder.Configuration["Jwt:Audience"] ?? "AIMS_Client",
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret!)),
-            ClockSkew = TimeSpan.Zero 
+            //ClockSkew = TimeSpan.Zero 
+            ClockSkew = TimeSpan.FromSeconds(30)
         };
         
         // ✅ 核心修复：带日志的 Redis 状态校验 (兼容 .NET 8)
@@ -172,7 +173,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                     }
                     else
                     {
-                        Console.WriteLine($"[Auth] Unknown Token Type: {context.SecurityToken?.GetType().FullName}");
+                       // Console.WriteLine($"[Auth] Unknown Token Type: {context.SecurityToken?.GetType().FullName}");
                         context.Fail("Invalid Token Type");
                         return;
                     }
@@ -180,22 +181,22 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                     var key = $"{redisOpts.Prefix}:login:{rawToken}";
 
                     // 3. 查 Redis (Debug 日志)
-                    Console.WriteLine($"[Auth] Checking Redis Key: {key}");
+                  //  Console.WriteLine($"[Auth] Checking Redis Key: {key}");
                     
                     var session = await redis.GetAsync<TokenSession>(key);
 
                     if (session == null)
                     {
-                        Console.WriteLine($"[Auth] Session NOT found for key: {key} -> 返回 401");
+                     //   Console.WriteLine($"[Auth] Session NOT found for key: {key} -> 返回 401");
                         context.Fail("Token invalid or expired (logged out).");
                         return;
                     }
 
-                    Console.WriteLine("[Auth] Redis Session Validated ✅");
+                  //  Console.WriteLine("[Auth] Redis Session Validated ✅");
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[Auth] Redis Check Failed: {ex.Message}");
+                   // Console.WriteLine($"[Auth] Redis Check Failed: {ex.Message}");
                     // 为了安全，报错也视为验证失败
                     context.Fail("Internal Auth Error");
                 }

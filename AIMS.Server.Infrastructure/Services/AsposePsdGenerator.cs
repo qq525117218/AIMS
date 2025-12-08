@@ -553,7 +553,7 @@ public class AsposePsdGenerator : IPsdGenerator
         // 设条形码区域约占底部 20%，图标放在底部 22%~25% 的位置
         int iconBottomMargin = (int)(Y * 0.28); // 底部向上 28%
         
-        int destY = bottomFoldY - iconBottomMargin - heightPx;
+        int destY = bottomFoldY - iconBottomMargin - heightPx + 300;
 
         return new Point(destX, destY);
     }
