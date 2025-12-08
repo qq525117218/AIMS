@@ -150,7 +150,7 @@ public class DesignController : ControllerBase
                 var fileBytes = await _psdService.CreatePsdFileAsync(request, progressCallback);
 
                 // 2. 保存文件到磁盘
-                progressCallback(92, "正在保存文件...");
+                progressCallback(95, "正在保存文件...");
                 string fileName = $"{taskId}.psd";
                 string filePath = Path.Combine(TempFileDir, fileName);
                 await System.IO.File.WriteAllBytesAsync(filePath, fileBytes);
