@@ -771,48 +771,95 @@ public class AsposePsdGenerator : IPsdGenerator
     }
 
     private void CreateRichTextLayer(PsdImage psdImage, string layerName, string label, string content, Rectangle rect, float fontSizePt)
+{
+    // 1. 防御性检查：如果没有内容，直接返回，不创建空图层
+    if (string.IsNullOrWhiteSpace(content)) return;
+
+    try
     {
-        if (string.IsNullOrWhiteSpace(content)) return;
-        try
+        // 2. [关键优化] 数据清洗：在绘图前将全角符号转换为半角标准符号
+        // 这样可以确保传入 Aspose 的字符串已经是干净的 ASCII 风格字符
+        string safeLabel = ToHalfWidth(label);
+        string safeContent = ToHalfWidth(content);
+
+        // 3. 创建图层
+        var textLayer = psdImage.AddTextLayer(layerName, rect);
+        var textData = textLayer.TextData;
+        float fontSizePixels = PtToPixels(fontSizePt);
+
+        // 设置基础样式
+        // 注意：这里建议显式检查 TextData 是否为空，防止极少数情况下的 NullReference
+        if (textData.Items.Length > 0)
         {
-            var textLayer = psdImage.AddTextLayer(layerName, rect);
-            var textData = textLayer.TextData;
-            float fontSizePixels = PtToPixels(fontSizePt);
             textData.Items[0].Style.FontSize = fontSizePixels;
             textData.Items[0].Paragraph.Justification = JustificationMode.Left;
-            
-            string fontName = "Arial";
 
-            if (!string.IsNullOrEmpty(label))
+            if (!string.IsNullOrEmpty(safeLabel))
             {
+                // --- 渲染 Label 部分 (加粗) ---
                 var labelPortion = textData.Items[0];
-                labelPortion.Text = label + " ";
-                labelPortion.Style.FauxBold = true;
-                labelPortion.Style.FontName = fontName;
+                labelPortion.Text = safeLabel + " "; // 加一个空格作为分隔
+                labelPortion.Style.FauxBold = true;  // 伪粗体
                 labelPortion.Style.FillColor = Color.Black;
-                
+
+                // --- 渲染 Content 部分 (常规) ---
                 var contentPortion = textData.ProducePortion();
-                contentPortion.Text = content;
+                contentPortion.Text = safeContent;
                 contentPortion.Style.FontSize = fontSizePixels;
-                contentPortion.Style.FontName = fontName;
                 contentPortion.Style.FauxBold = false;
                 contentPortion.Style.FillColor = Color.Black;
+                
                 textData.AddPortion(contentPortion);
             }
             else
             {
+                // --- 仅渲染 Content ---
                 var portion = textData.Items[0];
-                portion.Text = content;
-                portion.Style.FontName = fontName;
+                portion.Text = safeContent;
                 portion.Style.FontSize = fontSizePixels;
                 portion.Style.FauxBold = false;
                 portion.Style.FillColor = Color.Black;
             }
+
+            // 4. 更新图层数据以应用更改
             textData.UpdateLayerData();
         }
-        catch (Exception ex) { Console.WriteLine($"Error creating text layer {layerName}: {ex.Message}"); }
     }
+    catch (Exception ex)
+    {
+        // 建议：在生产环境中，这里应该使用 ILogger 记录日志，而不仅仅是 Console.WriteLine
+        Console.WriteLine($"[Error] 创建文本图层 '{layerName}' 失败: {ex.Message}");
+    }
+}
 
+    /// <summary>
+    /// [架构优化] 字符串标准化工具
+    /// 将全角字符（Full-width）转换为半角字符（Half-width/ASCII）。
+    /// 解决因全角符号导致的字体乱码或排版异常问题。
+    /// </summary>
+    private string ToHalfWidth(string input)
+    {
+        if (string.IsNullOrEmpty(input)) return input;
+
+        char[] c = input.ToCharArray();
+        for (int i = 0; i < c.Length; i++)
+        {
+            // 处理全角空格 (12288 -> 32)
+            if (c[i] == 12288)
+            {
+                c[i] = (char)32;
+                continue;
+            }
+
+            // 处理其他全角字符 (65281-65374) -> (33-126)
+            // 范围包含：全角数字、全角英文字母、全角标点符号
+            if (c[i] > 65280 && c[i] < 65375)
+            {
+                c[i] = (char)(c[i] - 65248);
+            }
+        }
+        return new string(c);
+    }
     private int CmToPixels(double cm) => (int)Math.Round((cm / 2.54) * DPI);
     private float PtToPixels(float pt) => (pt * DPI) / 72f;
 
