@@ -786,6 +786,7 @@ public class AsposePsdGenerator : IPsdGenerator
         var textLayer = psdImage.AddTextLayer(layerName, rect);
         var textData = textLayer.TextData;
         float fontSizePixels = PtToPixels(fontSizePt);
+        string fontName = FontSettings.GetAdobeFontName("Arial") ?? "Arial";
 
         // 设置基础样式
         // 注意：这里建议显式检查 TextData 是否为空，防止极少数情况下的 NullReference
@@ -801,6 +802,7 @@ public class AsposePsdGenerator : IPsdGenerator
                 labelPortion.Text = safeLabel + " "; // 加一个空格作为分隔
                 labelPortion.Style.FauxBold = true;  // 伪粗体
                 labelPortion.Style.FillColor = Color.Black;
+                labelPortion.Style.FontName = fontName;
 
                 // --- 渲染 Content 部分 (常规) ---
                 var contentPortion = textData.ProducePortion();
@@ -808,6 +810,7 @@ public class AsposePsdGenerator : IPsdGenerator
                 contentPortion.Style.FontSize = fontSizePixels;
                 contentPortion.Style.FauxBold = false;
                 contentPortion.Style.FillColor = Color.Black;
+                contentPortion.Style.FontName = fontName;
                 
                 textData.AddPortion(contentPortion);
             }
@@ -816,6 +819,7 @@ public class AsposePsdGenerator : IPsdGenerator
                 // --- 仅渲染 Content ---
                 var portion = textData.Items[0];
                 portion.Text = safeContent;
+                portion.Style.FontName = fontName;
                 portion.Style.FontSize = fontSizePixels;
                 portion.Style.FauxBold = false;
                 portion.Style.FillColor = Color.Black;
